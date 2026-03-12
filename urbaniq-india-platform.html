@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UrbanIQ — India Location Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<style>
+  :root {
+    --bg: #080b10;
+    --surface: #0f1218;
+    --surface2: #171b24;
+    --border: #1e2330;
+    --accent: #00e5a0;
+    --accent2: #3b82f6;
+    --accent3: #f97316;
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --text-mid: #94a3b8;
+    --danger: #ef4444;
+    --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background: radial-gradient(ellipse 70% 40% at 10% 0%, rgba(0,229,160,0.04) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 30% at 90% 100%, rgba(59,130,246,0.04) 0%, transparent 60%);
+  }
+
+  /* using DM Sans for body, Syne for headings/numbers */
+  header {    height: 56px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 1.5rem; border-bottom: 1px solid var(--border);
+    background: rgba(8,11,16,0.95); backdrop-filter: blur(20px);
+    position: relative; z-index: 1000;
+  }
+  .logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.3rem; color: var(--accent); display: flex; align-items: center; gap: 8px; }
+  .logo-box { width: 26px; height: 26px; background: var(--accent); border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #000; }
+  .header-info { font-size: 0.73rem; color: var(--text-dim); display: flex; align-items: center; gap: 16px; }
+  .data-badge { display: flex; align-items: center; gap: 5px; color: var(--text-mid); }
+  .data-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
+
+  /* layout */
+  .app { display: grid; grid-template-columns: 320px 1fr; height: calc(100vh - 56px); position: relative; z-index: 1; }
+
+  /* sidebar */
+  .sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  .sidebar-body { flex: 1; overflow-y: auto; padding: 1rem; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  .sec-label { font-family: 'Syne', sans-serif; font-size: 0.63rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); margin: 1.1rem 0 0.5rem; }
+  .sec-label:first-child { margin-top: 0; }
+
+  /* city dropdown */
+  .city-select {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 9px; padding: 10px 12px; color: var(--text);
+    font-family: 'DM Sans', sans-serif; font-size: 0.88rem; outline: none;
+    cursor: pointer; transition: border-color 0.2s;
+    appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+  }
+  .city-select:focus { border-color: var(--accent); }
+  option { background: var(--surface2); }
+
+  /* preference chips */
+  .prefs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .pref-chip {
+    display: flex; align-items: center; gap: 5px; padding: 7px 9px;
+    border-radius: 7px; border: 1px solid var(--border); background: transparent;
+    color: var(--text-dim); font-family: 'DM Sans', sans-serif; font-size: 0.76rem;
+    cursor: pointer; transition: all 0.18s; text-align: left;
+  }
+  .pref-chip.on { border-color: var(--accent); background: rgba(0,229,160,0.07); color: var(--accent); }
+
+  /* weight sliders */
+  .slider-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .sl-label { font-size: 0.76rem; color: var(--text-mid); min-width: 85px; }
+  .slider { flex: 1; -webkit-appearance: none; height: 3px; background: var(--border); border-radius: 2px; outline: none; }
+  .slider::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: var(--accent); cursor: pointer; box-shadow: 0 0 8px rgba(0,229,160,0.4); }
+  .sl-val { font-size: 0.74rem; color: var(--accent); min-width: 24px; text-align: right; font-weight: 600; }
+
+  .budget-display { font-family: 'Syne', sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--accent); text-align: center; margin-top: 4px; }
+
+  /* analyze button */
+  .analyze-btn {
+    width: 100%; padding: 11px; background: var(--accent); color: #000;
+    border: none; border-radius: 9px; font-family: 'Syne', sans-serif; font-weight: 700;
+    font-size: 0.92rem; cursor: pointer; transition: all 0.2s; letter-spacing: 0.02em;
+    position: relative; overflow: hidden;
+  }
+  .analyze-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,229,160,0.3); }
+  .analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .sidebar-foot { padding: 1rem; border-top: 1px solid var(--border); }
+
+  /* main content area */
+  .main { display: flex; flex-direction: column; overflow: hidden; }
+
+  /* tabs */
+  .tabs { display: flex; gap: 3px; padding: 0.6rem 1.2rem; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+  .tab {
+    padding: 5px 14px; border-radius: 6px; border: none; background: transparent;
+    color: var(--text-dim); font-family: 'DM Sans', sans-serif; font-size: 0.82rem;
+    cursor: pointer; transition: all 0.18s; display: flex; align-items: center; gap: 5px;
+  }
+  .tab.on { background: var(--surface2); color: var(--accent); border: 1px solid var(--border); }
+  .tab-badge { background: var(--accent); color: #000; border-radius: 10px; padding: 1px 6px; font-size: 0.68rem; font-weight: 800; display: none; }
+  .tab-badge.show { display: inline; }
+
+  /* panels */
+  .panels { flex: 1; overflow: hidden; position: relative; }
+  .panel { position: absolute; inset: 0; display: none; overflow-y: auto; }
+  .panel.on { display: block; }
+  #map-panel { overflow: hidden; }
+  #map { width: 100%; height: 100%; }
+
+  /* map overlays */
+  .map-controls { position: absolute; top: 10px; right: 10px; z-index: 400; display: flex; flex-direction: column; gap: 5px; }
+  .mc-btn {
+    background: rgba(8,11,16,0.92); border: 1px solid var(--border); color: var(--text-mid);
+    padding: 6px 11px; border-radius: 7px; font-size: 0.75rem; cursor: pointer;
+    transition: all 0.18s; font-family: 'DM Sans', sans-serif; backdrop-filter: blur(10px);
+  }
+  .mc-btn.on, .mc-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,0.06); }
+
+  .map-legend {
+    position: absolute; bottom: 28px; left: 10px; z-index: 400;
+    background: rgba(8,11,16,0.9); border: 1px solid var(--border); border-radius: 9px;
+    padding: 9px 13px; backdrop-filter: blur(10px);
+  }
+  .leg-title { font-size: 0.67rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 7px; font-weight: 600; }
+  .leg-items { display: flex; gap: 10px; }
+  .leg-item { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: var(--text-mid); }
+  .leg-dot { width: 9px; height: 9px; border-radius: 50%; }
+
+  /* empty states */
+  .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 250px; text-align: center; color: var(--text-dim); padding: 2rem; }
+  .empty-ico { font-size: 2.8rem; margin-bottom: 12px; opacity: 0.3; }
+  .empty-title { font-family: 'Syne', sans-serif; font-size: 1rem; color: var(--text-mid); margin-bottom: 5px; }
+  .empty-sub { font-size: 0.8rem; max-width: 300px; line-height: 1.6; }
+
+  /* neighborhood cards */
+  #results-panel, #insights-panel, #rentals-panel, #ai-panel { padding: 1.25rem; }
+
+  .results-hdr { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; gap: 10px; }
+  .results-title { font-family: 'Syne', sans-serif; font-size: 1.15rem; font-weight: 700; }
+  .results-sub { font-size: 0.77rem; color: var(--text-dim); margin-top: 2px; }
+  .sort-sel { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 5px 9px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 0.77rem; outline: none; cursor: pointer; }
+
+  /* stat summary row */
+  .stat-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 7px; margin-bottom: 1rem; }
+  .stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 9px; padding: 11px 13px; text-align: center; }
+  .stat-v { font-family: 'Syne', sans-serif; font-size: 1.3rem; font-weight: 800; color: var(--accent); }
+  .stat-l { font-size: 0.67rem; color: var(--text-dim); margin-top: 2px; }
+
+  /* nb cards grid */
+  .nb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+  .nb-card {
+    background: rgba(15,18,24,0.85); border: 1px solid var(--border); border-radius: 13px;
+    padding: 1.1rem; cursor: pointer; transition: all 0.22s; position: relative; overflow: hidden;
+    backdrop-filter: blur(8px);
+  }
+  .nb-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--accent), transparent); opacity: 0; transition: opacity 0.2s; }
+  .nb-card:hover { border-color: rgba(0,229,160,0.25); transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.35); }
+  .nb-card:hover::before { opacity: 1; }
+  .nb-rank { position: absolute; top: 10px; right: 12px; font-family: 'Syne', sans-serif; font-size: 1.4rem; font-weight: 800; color: var(--border); }
+  .nb-rank.top { color: var(--accent); }
+  .nb-name { font-family: 'Syne', sans-serif; font-size: 0.98rem; font-weight: 700; margin-bottom: 3px; }
+  .nb-city { font-size: 0.74rem; color: var(--text-dim); margin-bottom: 10px; }
+  .score-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .score-lbl { font-size: 0.72rem; color: var(--text-dim); }
+  .score-track { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width 0.7s cubic-bezier(0.34,1.56,0.64,1); }
+  .score-num { font-size: 0.78rem; font-weight: 700; color: var(--accent); min-width: 28px; }
+  .nb-metrics { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
+  .metric { background: var(--surface); border-radius: 7px; padding: 6px 7px; text-align: center; }
+  .metric-v { font-size: 0.82rem; font-weight: 600; }
+  .metric-k { font-size: 0.63rem; color: var(--text-dim); margin-top: 1px; }
+  .nb-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+  .tag { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 20px; font-size: 0.68rem; font-weight: 600; }
+  .tag-g { background: rgba(0,229,160,0.1); color: var(--accent); }
+  .tag-b { background: rgba(59,130,246,0.1); color: var(--accent2); }
+  .tag-o { background: rgba(249,115,22,0.1); color: var(--accent3); }
+  .nb-known { font-size: 0.73rem; color: var(--text-dim); margin-top: 8px; font-style: italic; border-top: 1px solid var(--border); padding-top: 7px; }
+
+  /* insights charts */
+  .ins-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .ins-card { background: rgba(15,18,24,0.85); border: 1px solid var(--border); border-radius: 13px; padding: 1.1rem; }
+  .ins-card.wide { grid-column: 1/-1; }
+  .ins-hdr { font-family: 'Syne', sans-serif; font-size: 0.65rem; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+  .bar-chart { display: flex; flex-direction: column; gap: 7px; }
+  .bar-row { display: flex; align-items: center; gap: 7px; }
+  .bar-name { font-size: 0.74rem; color: var(--text-mid); min-width: 85px; max-width: 85px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { flex: 1; height: 18px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 6px; font-size: 0.68rem; font-weight: 700; color: #000; transition: width 0.8s cubic-bezier(0.34,1.56,0.64,1); }
+  .col-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 8px; }
+  .col-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .col-key { font-size: 0.72rem; color: var(--text-dim); margin-bottom: 5px; }
+  .col-bar { display: flex; align-items: center; gap: 7px; }
+  .col-track { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .col-fill { height: 100%; border-radius: 2px; }
+  .col-val { font-size: 0.78rem; font-weight: 700; color: var(--text); }
+
+  /* rental listings */
+  .rent-hdr { margin-bottom: 1rem; }
+  .rent-title { font-family: 'Syne', sans-serif; font-size: 1.1rem; font-weight: 700; }
+  .rent-sub { font-size: 0.77rem; color: var(--text-dim); margin-top: 2px; }
+  .rent-area-sel { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .area-btn { padding: 5px 13px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); font-family: 'DM Sans', sans-serif; font-size: 0.76rem; cursor: pointer; transition: all 0.18s; }
+  .area-btn.on { border-color: var(--accent); background: rgba(0,229,160,0.08); color: var(--accent); }
+  .props-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 10px; margin-top: 1rem; }
+  .prop-card {
+    background: rgba(15,18,24,0.85); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1rem; transition: all 0.2s; cursor: pointer;
+  }
+  .prop-card:hover { border-color: rgba(59,130,246,0.35); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+  .prop-type-badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+  .badge-apartment { background: rgba(59,130,246,0.12); color: var(--accent2); }
+  .badge-house { background: rgba(249,115,22,0.12); color: var(--accent3); }
+  .badge-flat { background: rgba(0,229,160,0.1); color: var(--accent); }
+  .prop-name { font-family: 'Syne', sans-serif; font-size: 0.92rem; font-weight: 700; margin-bottom: 2px; }
+  .prop-area { font-size: 0.74rem; color: var(--text-dim); margin-bottom: 8px; }
+  .prop-price { font-family: 'Syne', sans-serif; font-size: 1.25rem; font-weight: 800; color: var(--accent); }
+  .prop-price span { font-size: 0.72rem; font-weight: 400; color: var(--text-dim); }
+  .prop-stats { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .prop-stat { font-size: 0.72rem; color: var(--text-dim); background: var(--surface); padding: 3px 7px; border-radius: 5px; }
+  .prop-furnish { display: inline-block; margin-top: 6px; font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; }
+  .fur-full { background: rgba(0,229,160,0.08); color: var(--accent); }
+  .fur-semi { background: rgba(249,115,22,0.08); color: var(--accent3); }
+  .fur-un { background: rgba(100,116,139,0.12); color: var(--text-dim); }
+  .prop-desc { font-size: 0.74rem; color: var(--text-dim); margin-top: 8px; line-height: 1.5; border-top: 1px solid var(--border); padding-top: 8px; }
+  .view-btn {
+    display: block; width: 100%; margin-top: 10px; padding: 8px;
+    background: var(--accent2); color: #fff; border: none; border-radius: 7px;
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.8rem;
+    cursor: pointer; text-align: center; text-decoration: none;
+    transition: opacity 0.2s;
+  }
+  .view-btn:hover { opacity: 0.85; }
+
+  /* chat panel */
+  .ai-hdr { display: flex; align-items: center; gap: 11px; margin-bottom: 1.2rem; }
+  .ai-ico { width: 38px; height: 38px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 17px; }
+  .ai-title { font-family: 'Syne', sans-serif; font-size: 1.1rem; font-weight: 700; }
+  .ai-sub { font-size: 0.76rem; color: var(--text-dim); }
+  .ai-chat { background: var(--surface); border: 1px solid var(--border); border-radius: 13px; padding: 1.1rem; min-height: 180px; max-height: 380px; overflow-y: auto; margin-bottom: 10px; scrollbar-width: thin; }
+  .ai-msg { margin-bottom: 10px; animation: fadeIn 0.3s ease; }
+  .ai-msg.user { text-align: right; }
+  .ai-bubble { display: inline-block; max-width: 82%; padding: 9px 13px; border-radius: 11px; font-size: 0.84rem; line-height: 1.6; text-align: left; }
+  .ai-msg.user .ai-bubble { background: rgba(0,229,160,0.1); border: 1px solid rgba(0,229,160,0.18); color: var(--text); }
+  .ai-msg.bot .ai-bubble { background: var(--surface2); border: 1px solid var(--border); color: var(--text-mid); }
+  .ai-who { font-size: 0.67rem; color: var(--text-dim); margin-bottom: 3px; }
+  .ai-input-row { display: flex; gap: 7px; }
+  .ai-inp { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 9px; padding: 9px 13px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 0.85rem; outline: none; transition: border-color 0.18s; }
+  .ai-inp:focus { border-color: var(--accent); }
+  .ai-inp::placeholder { color: var(--text-dim); }
+  .ai-send { padding: 9px 16px; background: var(--accent); border: none; border-radius: 9px; color: #000; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: opacity 0.2s; }
+  .ai-send:hover { opacity: 0.85; }
+  .ai-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* loading overlay */
+  .loading { position: absolute; inset: 0; background: rgba(8,11,16,0.88); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 900; backdrop-filter: blur(5px); }
+  .loading.show { display: flex; }
+  .spin { width: 44px; height: 44px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.75s linear infinite; margin-bottom: 14px; }
+  .load-txt { font-family: 'Syne', sans-serif; font-size: 0.95rem; color: var(--accent); }
+  .load-sub { font-size: 0.75rem; color: var(--text-dim); margin-top: 4px; }
+
+  /* toast notification */
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(70px); background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 9px 18px; border-radius: 9px; font-size: 0.82rem; z-index: 9999; transition: transform 0.28s cubic-bezier(0.34,1.56,0.64,1); backdrop-filter: blur(10px); }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* leaflet popup overrides */
+  .leaflet-popup-content-wrapper { background: var(--surface2) !important; border: 1px solid var(--border) !important; color: var(--text) !important; border-radius: 10px !important; box-shadow: 0 8px 30px rgba(0,0,0,0.6) !important; }
+  .leaflet-popup-tip { background: var(--surface2) !important; }
+  .leaflet-container { background: #0a0f1a; }
+
+  .custom-pin { background: var(--accent); border: 2px solid #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 10px; color: #000; box-shadow: 0 0 10px rgba(0,229,160,0.5); }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .divider { height: 1px; background: var(--border); margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><div class="logo-box">🏙</div>UrbanIQ</div>
+    <div class="header-info">
+    <div class="data-badge"><div class="data-dot"></div>108 neighborhoods</div>
+    <div class="data-badge"><div class="data-dot" style="background:var(--accent2)"></div>90 listings</div>
+    <div class="data-badge"><div class="data-dot" style="background:var(--accent3)"></div>13 cities</div>
+  </div>
+</header>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-body">
+
+      <div class="sec-label">City</div>
+      <select class="city-select" id="citySelect">
+        <option value="">— Choose a city —</option>
+        <option value="Mumbai">Mumbai, Maharashtra</option>
+        <option value="Delhi">Delhi, NCR</option>
+        <option value="Bangalore">Bangalore, Karnataka</option>
+        <option value="Hyderabad">Hyderabad, Telangana</option>
+        <option value="Chennai">Chennai, Tamil Nadu</option>
+        <option value="Pune">Pune, Maharashtra</option>
+        <option value="Kolkata">Kolkata, West Bengal</option>
+        <option value="Ahmedabad">Ahmedabad, Gujarat</option>
+        <option value="Jaipur">Jaipur, Rajasthan</option>
+        <option value="Lucknow">Lucknow, Uttar Pradesh</option>
+        <option value="Surat">Surat, Gujarat</option>
+        <option value="Nagpur">Nagpur, Maharashtra</option>
+        <option value="Indore">Indore, Madhya Pradesh</option>
+      </select>
+
+      <div class="sec-label">What matters to you</div>
+      <div class="prefs-grid">
+        <button class="pref-chip on" data-p="cost">💰 Low Cost</button>
+        <button class="pref-chip on" data-p="safety">🛡 Safety</button>
+        <button class="pref-chip" data-p="green">🌳 Greenery</button>
+        <button class="pref-chip on" data-p="transport">🚌 Transport</button>
+        <button class="pref-chip" data-p="markets">🛒 Markets</button>
+        <button class="pref-chip" data-p="lifestyle">✨ Lifestyle</button>
+        <button class="pref-chip" data-p="schools">🎓 Schools</button>
+        <button class="pref-chip" data-p="healthcare">🏥 Healthcare</button>
+      </div>
+
+      <div class="sec-label">Adjust importance</div>
+      <div class="slider-row">
+        <span class="sl-label">Affordability</span>
+        <input type="range" class="slider" id="wCost" min="1" max="10" value="8" oninput="sv('wCost','vCost')">
+        <span class="sl-val" id="vCost">8</span>
+      </div>
+      <div class="slider-row">
+        <span class="sl-label">Safety</span>
+        <input type="range" class="slider" id="wSafety" min="1" max="10" value="7" oninput="sv('wSafety','vSafety')">
+        <span class="sl-val" id="vSafety">7</span>
+      </div>
+      <div class="slider-row">
+        <span class="sl-label">Transit</span>
+        <input type="range" class="slider" id="wTransit" min="1" max="10" value="6" oninput="sv('wTransit','vTransit')">
+        <span class="sl-val" id="vTransit">6</span>
+      </div>
+      <div class="slider-row">
+        <span class="sl-label">Amenities</span>
+        <input type="range" class="slider" id="wAmen" min="1" max="10" value="5" oninput="sv('wAmen','vAmen')">
+        <span class="sl-val" id="vAmen">5</span>
+      </div>
+
+      <div class="sec-label">Max rent budget / month</div>
+      <input type="range" class="slider" id="budget" min="5000" max="150000" step="1000" value="30000" oninput="updateBudget()" style="width:100%">
+      <div class="budget-display" id="budgetDisplay">₹30,000 / month</div>
+
+    </div>
+    <div class="sidebar-foot">
+      <button class="analyze-btn" id="analyzeBtn" onclick="analyze()">Find Best Neighborhoods →</button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="tabs">
+      <button class="tab on" data-tab="map" onclick="switchTab(this,'map')">🗺 Map</button>
+      <button class="tab" data-tab="results" onclick="switchTab(this,'results')">🏘 Rankings <span class="tab-badge" id="nb-badge"></span></button>
+      <button class="tab" data-tab="insights" onclick="switchTab(this,'insights')">📊 Insights</button>
+      <button class="tab" data-tab="rentals" onclick="switchTab(this,'rentals')">🏠 Rentals <span class="tab-badge" id="rent-badge"></span></button>
+      <button class="tab" data-tab="ai" onclick="switchTab(this,'ai')">💬 Ask Anything</button>
+    </div>
+
+    <div class="panels">
+
+      <!-- MAP -->
+      <div class="panel on" id="map-panel">
+        <div id="map"></div>
+        <div class="map-controls">
+          <button class="mc-btn on" onclick="setHeat('overall',this)">Overall Score</button>
+          <button class="mc-btn" onclick="setHeat('cost',this)">Affordability</button>
+          <button class="mc-btn" onclick="setHeat('safety',this)">Safety</button>
+          <button class="mc-btn" onclick="setHeat('green',this)">Greenery</button>
+          <button class="mc-btn" onclick="setHeat('transport',this)">Transport</button>
+        </div>
+        <div class="map-legend">
+          <div class="leg-title">suitability</div>
+          <div class="leg-items">
+            <div class="leg-item"><div class="leg-dot" style="background:#ef4444"></div>Low</div>
+            <div class="leg-item"><div class="leg-dot" style="background:#f59e0b"></div>Medium</div>
+            <div class="leg-item"><div class="leg-dot" style="background:#00e5a0"></div>High</div>
+          </div>
+        </div>
+        <div class="empty" id="mapEmpty">
+          <div class="empty-ico">🗺️</div>
+          <div class="empty-title">Pick a city to get started</div>
+          <div class="empty-sub">Select a city from the sidebar, set your preferences, and hit the button to see a live neighborhood map.</div>
+        </div>
+      </div>
+
+      <!-- RESULTS -->
+      <div class="panel" id="results-panel">
+        <div class="empty" id="resultsEmpty">
+          <div class="empty-ico">🏘️</div>
+          <div class="empty-title">Nothing here yet</div>
+          <div class="empty-sub">Pick a city, set your priorities, and run the search to see neighborhoods ranked for you.</div>
+        </div>
+        <div id="resultsContent" style="display:none">
+          <div class="results-hdr">
+            <div>
+              <div class="results-title" id="resTitle"></div>
+              <div class="results-sub" id="resSub"></div>
+            </div>
+            <select class="sort-sel" onchange="sortNB(this.value)">
+              <option value="overall">Best Match</option>
+              <option value="cost">Cheapest</option>
+              <option value="safety">Safest</option>
+              <option value="transport">Best Transit</option>
+              <option value="green">Most Green</option>
+            </select>
+          </div>
+          <div class="stat-row" id="statRow"></div>
+          <div class="nb-grid" id="nbGrid"></div>
+        </div>
+      </div>
+
+      <!-- INSIGHTS -->
+      <div class="panel" id="insights-panel">
+        <div class="empty" id="insEmpty">
+          <div class="empty-ico">📊</div>
+          <div class="empty-title">Run a search first</div>
+          <div class="empty-sub">Charts, cost of living data, and city-level breakdowns will show up here once you run an analysis.</div>
+        </div>
+        <div id="insContent" style="display:none">
+          <div style="font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:700;margin-bottom:3px" id="insTitle"></div>
+          <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:1rem" id="insSub"></div>
+          <div class="ins-grid">
+            <div class="ins-card">
+              <div class="ins-hdr">top areas by score</div>
+              <div class="bar-chart" id="scoreChart"></div>
+            </div>
+            <div class="ins-card">
+              <div class="ins-hdr">avg 2BHK rent / month</div>
+              <div class="bar-chart" id="rentChart"></div>
+            </div>
+            <div class="ins-card wide">
+              <div class="ins-hdr">cost of living breakdown</div>
+              <div class="col-grid" id="colGrid"></div>
+            </div>
+            <div class="ins-card wide">
+              <div class="ins-hdr">score breakdown — #1 neighborhood</div>
+              <canvas id="radarCanvas" width="600" height="230"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RENTALS -->
+      <div class="panel" id="rentals-panel">
+        <div class="empty" id="rentEmpty">
+          <div class="empty-ico">🏠</div>
+          <div class="empty-title">No listings yet</div>
+          <div class="empty-sub">Run a search first. After that, click any neighborhood card to browse verified rental listings.</div>
+        </div>
+        <div id="rentContent" style="display:none">
+          <div class="rent-hdr">
+            <div class="rent-title" id="rentTitle">Rental Listings</div>
+            <div class="rent-sub" id="rentSub"></div>
+            <div class="rent-area-sel" id="areaSelRow"></div>
+          </div>
+          <div class="props-grid" id="propsGrid"></div>
+        </div>
+      </div>
+
+      <!-- AI -->
+      <div class="panel" id="ai-panel">
+        <div class="ai-hdr">
+          <div class="ai-ico">💬</div>
+          <div>
+            <div class="ai-title">Neighborhood Q&A</div>
+            <div class="ai-sub">Ask about commute, rent, safety, lifestyle — anything</div>
+          </div>
+        </div>
+        <div class="ai-chat" id="aiChat">
+          <div class="ai-msg bot">
+            <div class="ai-who">UrbanIQ</div>
+            <div class="ai-bubble">Hey! Ask me anything about relocating in India — neighborhoods, commutes, rent negotiations, what areas to avoid, you name it.<br><br>Some things I can help with:<br>• Which area suits a software engineer budget in Bangalore?<br>• Koramangala vs Indiranagar — pros/cons for a couple<br>• Best pockets in Mumbai under ₹25k rent<br>• Is Gachibowli actually family-friendly?</div>
+          </div>
+        </div>
+        <div class="ai-input-row">
+          <input type="text" class="ai-inp" id="aiInp" placeholder="e.g. best area for a family of 4 in Pune under 40k rent..." onkeydown="if(event.key==='Enter')sendAI()">
+          <button class="ai-send" id="aiBtn" onclick="sendAI()">Send →</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- LOADING -->
+    <div class="loading" id="loadDiv">
+      <div class="spin"></div>
+      <div class="load-txt" id="loadTxt">Analyzing Neighborhoods</div>
+      <div class="load-sub" id="loadSub">Loading dataset...</div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// datasets -- pulled from the CSV exports, inlined for now
+// TODO: eventually move this to a proper backend / API call
+
+const NEIGHBORHOODS_CSV = `city,neighborhood,latitude,longitude,safety_score,transport_score,greenery_score,market_score,healthcare_score,schools_score,lifestyle_score,avg_rent_1bhk,avg_rent_2bhk,avg_rent_3bhk,cost_of_living_index,population_density,known_for
+Mumbai,Bandra West,19.0596,72.8295,78,88,62,92,85,80,90,45000,75000,120000,82,28000,Cafes/nightlife/celebrities/sea-link view
+Mumbai,Andheri West,19.1364,72.8296,72,90,55,90,82,78,84,28000,48000,80000,75,35000,Airport proximity/IT offices/malls
+Mumbai,Powai,19.1196,72.9060,82,75,78,85,88,85,85,25000,42000,70000,72,18000,Lake view/IIT Bombay/tech companies
+Mumbai,Juhu,19.1075,72.8263,80,70,65,85,80,75,88,55000,90000,150000,85,15000,Beach/Bollywood/premium housing
+Mumbai,Goregaon East,19.1663,72.8526,70,85,58,88,78,80,78,22000,38000,62000,68,32000,Film City/Oberoi Mall/metro
+Mumbai,Malad West,19.1887,72.8491,68,84,52,87,75,76,75,20000,34000,55000,65,38000,Inorbit Mall/Link Road/metro access
+Mumbai,Chembur,19.0626,72.8993,72,80,60,84,80,78,77,18000,30000,50000,64,30000,Eastern Express Highway/peaceful
+Mumbai,Thane West,19.2183,72.9781,75,82,70,88,82,82,80,16000,28000,45000,62,25000,Lake city/green spaces/IT hub
+Mumbai,Navi Mumbai Vashi,19.0771,73.0071,80,85,72,90,85,85,82,14000,24000,40000,60,22000,Planned city/clean/affordable
+Mumbai,Kandivali East,19.2043,72.8619,70,80,55,85,75,78,74,18000,30000,48000,63,33000,Ram Mandir/suburban/affordable
+Mumbai,Lower Parel,18.9940,72.8282,74,85,40,88,82,72,86,40000,65000,110000,80,22000,Corporate hub/nightlife/BKC nearby
+Mumbai,Worli,19.0176,72.8180,76,80,45,85,84,74,85,55000,85000,140000,82,20000,Sea face/luxury towers/Bandra-Worli link
+Delhi,Hauz Khas,28.5494,77.2001,74,82,75,90,85,85,92,30000,55000,90000,78,18000,Art galleries/nightlife/IIT Delhi
+Delhi,Dwarka,28.5921,77.0460,76,88,68,88,82,84,80,15000,25000,40000,62,28000,Metro city/planned sector/affordable
+Delhi,Saket,28.5245,77.2066,78,82,70,90,88,85,85,28000,48000,80000,76,20000,Select Citywalk/South Delhi premium
+Delhi,Vasant Kunj,28.5223,77.1569,80,75,78,85,85,85,86,25000,42000,70000,74,15000,DLF Mall/green/posh colony
+Delhi,Lajpat Nagar,28.5677,77.2433,72,85,55,92,80,78,84,22000,38000,62000,72,30000,Shopping hub/South Delhi location
+Delhi,Rohini,28.7041,77.1025,70,85,62,87,78,80,76,14000,24000,40000,62,32000,Affordable/metro/family area
+Delhi,Janakpuri,28.6219,77.0822,74,82,60,85,80,80,78,16000,28000,45000,64,28000,West Delhi/peaceful/metro access
+Delhi,Greater Kailash,28.5489,77.2310,80,78,72,88,85,85,88,35000,58000,95000,80,16000,GK1/GK2/posh/market hub
+Delhi,Pitampura,28.7098,77.1308,72,84,58,86,78,80,76,16000,27000,44000,63,30000,North Delhi/metro/affordable
+Delhi,Mayur Vihar,28.6084,77.2982,75,86,65,85,80,80,78,18000,30000,48000,65,26000,East Delhi/metro/family area
+Delhi,Rajouri Garden,28.6462,77.1198,72,85,55,88,78,76,78,18000,30000,50000,66,32000,West Delhi/TDI Mall/metro
+Delhi,Noida Sector 62,28.6271,77.3649,78,85,65,88,82,85,82,16000,28000,45000,65,22000,IT hub/metro/planned
+Bangalore,Koramangala,12.9352,77.6245,78,80,68,92,88,82,92,28000,48000,80000,78,22000,Startups/cafes/nightlife/IT hub
+Bangalore,Indiranagar,12.9784,77.6408,80,82,70,90,85,80,90,30000,52000,85000,80,20000,100 Feet Road/pubs/premium
+Bangalore,Whitefield,12.9698,77.7500,75,72,65,85,80,80,82,20000,35000,58000,70,18000,IT corridor/malls/gated communities
+Bangalore,HSR Layout,12.9116,77.6389,80,78,72,88,85,85,86,25000,42000,70000,76,18000,Planned layout/families/IT proximity
+Bangalore,Electronic City,12.8399,77.6770,72,70,60,80,75,75,75,14000,24000,40000,62,22000,IT hub/affordable/Infosys campus
+Bangalore,Bellandur,12.9257,77.6760,74,72,62,82,78,78,78,18000,30000,50000,65,20000,Outer Ring Road/IT/lakes nearby
+Bangalore,Jayanagar,12.9299,77.5847,82,80,75,88,88,88,86,20000,35000,58000,74,20000,Old Bangalore/trees/culture
+Bangalore,Banashankari,12.9248,77.5471,78,78,72,86,85,85,82,18000,30000,50000,70,22000,South Bangalore/temples/peaceful
+Bangalore,Marathahalli,12.9591,77.6971,72,74,60,86,78,78,78,16000,28000,46000,66,28000,IT corridor/malls/affordable
+Bangalore,BTM Layout,12.9166,77.6101,76,80,65,88,82,80,82,20000,34000,56000,72,25000,Startup hub/affordable/central
+Bangalore,Hebbal,13.0358,77.5970,78,82,70,82,82,80,80,22000,38000,62000,70,18000,Lake view/Outer Ring Road/IT
+Bangalore,JP Nagar,12.9077,77.5856,80,78,72,86,85,85,82,19000,33000,54000,72,20000,South Bangalore/peaceful/metro upcoming
+Hyderabad,Gachibowli,17.4400,78.3489,80,78,68,88,85,82,85,20000,35000,58000,72,18000,IT hub/HITEC City proximity/DLF
+Hyderabad,Banjara Hills,17.4156,78.4347,82,75,72,90,88,85,90,35000,58000,95000,80,15000,Posh/embassies/restaurants/premium
+Hyderabad,Jubilee Hills,17.4325,78.4071,84,72,75,88,90,88,90,40000,65000,110000,82,14000,Film industry/luxury/green
+Hyderabad,Madhapur,17.4484,78.3908,78,80,65,86,82,80,84,22000,38000,62000,74,20000,HITEC City/IT hub/cafes
+Hyderabad,Kondapur,17.4603,78.3607,76,78,68,85,80,80,80,18000,30000,50000,68,22000,IT corridor/affordable/gated
+Hyderabad,Kukatpally,17.4849,78.4138,74,82,60,88,80,80,78,16000,27000,44000,65,28000,JNTU/affordable/families
+Hyderabad,Begumpet,17.4434,78.4682,78,82,65,88,85,80,82,22000,38000,62000,74,20000,Airport road/embassies/central
+Hyderabad,Secunderabad,17.4399,78.4983,76,85,62,88,82,82,80,18000,30000,50000,68,25000,Cantonment/railway hub/historic
+Hyderabad,Miyapur,17.4967,78.3489,72,80,60,84,76,78,74,14000,24000,38000,62,28000,Metro terminus/affordable/growing
+Hyderabad,LB Nagar,17.3490,78.5515,70,80,58,85,75,76,72,12000,20000,33000,60,30000,South Hyderabad/affordable/metro
+Chennai,Anna Nagar,13.0850,80.2101,80,82,72,90,86,86,86,22000,38000,62000,74,22000,Posh/tower park/shopping
+Chennai,Adyar,13.0012,80.2565,80,78,72,88,88,85,86,25000,42000,70000,76,18000,IIT Madras/greenery/premium south
+Chennai,Velachery,12.9815,80.2209,76,82,65,88,82,82,80,18000,30000,50000,68,25000,IT hub/Phoenix Mall/metro
+Chennai,OMR,12.9010,80.2279,74,72,62,80,78,78,76,16000,28000,46000,65,20000,IT corridor/startups/beach nearby
+Chennai,Porur,13.0389,80.1573,74,75,65,82,80,80,76,16000,28000,45000,64,22000,IT companies/affordable/suburban
+Chennai,Nungambakkam,13.0569,80.2425,80,82,68,90,86,82,86,28000,48000,80000,78,20000,Consulates/upscale/central
+Chennai,T Nagar,13.0418,80.2341,75,85,52,92,84,80,84,22000,38000,62000,74,35000,Shopping capital/Pondy Bazaar
+Chennai,Perambur,13.1143,80.2329,70,82,55,85,76,76,72,14000,24000,38000,62,30000,North Chennai/affordable/metro
+Chennai,Sholinganallur,12.9010,80.2278,74,72,60,80,78,78,74,16000,27000,44000,64,20000,IT hub/affordable/OMR belt
+Chennai,Mylapore,13.0335,80.2680,78,80,65,90,84,82,84,25000,42000,70000,74,25000,Cultural hub/temples/heritage
+Pune,Koregaon Park,18.5362,73.8938,80,78,78,90,86,80,90,28000,48000,80000,78,18000,Pubs/Osho Ashram/expats/premium
+Pune,Baner,18.5590,73.7868,78,78,70,88,82,82,84,22000,38000,62000,74,20000,IT hub/malls/young crowd
+Pune,Kothrud,18.5074,73.8077,80,80,72,88,86,86,84,20000,35000,58000,74,22000,Education hub/peaceful/families
+Pune,Viman Nagar,18.5679,73.9143,78,80,65,88,82,82,82,22000,38000,62000,74,20000,Airport road/IT/cosmopolitan
+Pune,Hinjewadi,18.5912,73.7389,74,72,60,80,76,76,76,16000,27000,44000,64,18000,IT park/startups/affordable
+Pune,Wakad,18.5985,73.7707,74,74,62,82,78,78,76,18000,30000,50000,66,20000,IT corridor/growing/malls
+Pune,Aundh,18.5601,73.8076,80,80,72,88,85,84,84,22000,38000,62000,74,20000,Posh/fitness culture/cafes
+Pune,Hadapsar,18.5018,73.9260,72,75,60,85,78,78,74,15000,26000,42000,63,25000,IT hub/Magarpatta City/affordable
+Pune,Shivajinagar,18.5308,73.8474,78,84,65,90,85,82,84,24000,40000,65000,76,25000,City center/FC Road/college area
+Pune,Pimple Saudagar,18.6120,73.7986,74,76,65,84,78,80,76,18000,30000,48000,66,22000,Affordable/growing suburb/families
+Kolkata,Salt Lake,22.5726,88.4005,80,82,75,88,86,86,84,16000,26000,42000,68,18000,IT sector/planned/clean
+Kolkata,New Town,22.5846,88.4762,80,80,78,85,82,85,82,14000,24000,38000,65,15000,Eco Park/IT hub/planned city
+Kolkata,Ballygunge,22.5236,88.3612,82,78,72,88,88,85,86,22000,38000,62000,76,20000,Elite posh area/culture/south Kolkata
+Kolkata,Park Street,22.5509,88.3516,78,84,65,90,85,80,88,25000,42000,70000,78,25000,Restaurant street/nightlife/central
+Kolkata,Behala,22.5003,88.3112,72,76,65,82,76,76,72,12000,20000,32000,60,28000,South Kolkata/affordable/residential
+Kolkata,Dumdum,22.6398,88.4249,70,82,58,82,74,74,70,10000,17000,27000,58,30000,Airport area/affordable/metro
+Kolkata,Alipore,22.5362,88.3322,82,78,72,88,88,85,86,28000,48000,80000,78,15000,Most posh area/zoo/south Kolkata
+Kolkata,Howrah,22.5958,88.2636,68,80,52,85,74,74,70,10000,17000,27000,58,35000,Bridge/railway/affordable
+Kolkata,Jadavpur,22.4986,88.3720,76,78,70,85,80,82,78,14000,24000,38000,65,22000,University area/intellectual hub
+Kolkata,Rajarhat,22.6178,88.4602,76,78,72,82,78,78,76,12000,20000,32000,62,18000,New suburb/IT/growing
+Ahmedabad,Prahlad Nagar,23.0225,72.5080,80,78,70,90,85,84,86,18000,30000,50000,70,18000,Corporate hub/malls/upscale west
+Ahmedabad,Bodakdev,23.0300,72.5060,80,75,68,88,84,84,84,20000,34000,56000,72,16000,Posh/SG Highway/restaurants
+Ahmedabad,Satellite,23.0215,72.5246,80,78,70,88,85,84,85,22000,38000,62000,74,18000,Upscale/SG Highway/malls
+Ahmedabad,Navrangpura,23.0293,72.5618,78,82,65,90,84,83,85,18000,30000,50000,72,22000,City center/cafes/young crowd
+Ahmedabad,Maninagar,22.9960,72.6050,72,80,58,85,78,78,74,12000,20000,32000,62,28000,Traditional area/east Ahmedabad
+Ahmedabad,Bopal,23.0353,72.4677,76,72,68,82,78,80,76,14000,24000,38000,64,18000,Growing suburb/affordable/green
+Ahmedabad,Chandkheda,23.1143,72.5944,72,78,62,82,76,78,72,12000,20000,32000,60,25000,Affordable/north Ahmedabad
+Ahmedabad,Vastrapur,23.0375,72.5288,80,78,70,88,85,84,84,18000,30000,50000,72,18000,Lake/upscale/SG Highway
+Jaipur,Malviya Nagar,26.8466,75.8074,78,78,68,88,82,82,82,14000,24000,38000,65,20000,IT hub/modern/malls
+Jaipur,Vaishali Nagar,26.9124,75.7366,78,75,68,86,82,82,82,14000,24000,38000,65,18000,Posh west Jaipur/peaceful
+Jaipur,C-Scheme,26.9124,75.8069,80,80,70,90,85,82,86,18000,30000,50000,72,18000,Central posh area/embassies
+Jaipur,Mansarovar,26.8600,75.7719,76,78,65,86,80,80,78,12000,20000,32000,62,22000,Largest residential/metro
+Jaipur,Raja Park,26.9167,75.8233,75,78,65,85,80,80,78,12000,20000,32000,62,22000,Central/affordable/markets nearby
+Jaipur,Tonk Road,26.8479,75.8193,72,75,60,82,76,76,72,11000,18000,29000,60,22000,South Jaipur/affordable/growing
+Jaipur,Jagatpura,26.8214,75.8416,72,72,60,80,74,76,70,10000,17000,27000,58,20000,Developing/affordable/IT upcoming
+Lucknow,Gomti Nagar,26.8638,80.9950,78,78,70,88,82,82,82,12000,20000,32000,62,20000,IT hub/planned/malls/modern
+Lucknow,Hazratganj,26.8500,80.9462,76,82,65,90,82,80,84,16000,28000,45000,70,28000,City center/colonial/shopping
+Lucknow,Aliganj,26.8786,80.9476,75,78,65,86,80,80,78,12000,20000,32000,63,22000,Family area/affordable/north
+Lucknow,Indira Nagar,26.8799,81.0095,76,78,65,85,80,80,78,12000,20000,32000,63,22000,East Lucknow/IT/affordable
+Lucknow,Vibhuti Khand,26.8627,80.9991,78,76,68,85,80,82,80,14000,24000,38000,65,18000,Gomti Nagar extension/posh
+Nagpur,Dharampeth,21.1424,79.0719,78,78,68,88,84,84,82,12000,20000,32000,63,20000,Elite area/MLA colony/central
+Nagpur,Sadar,21.1533,79.0822,76,80,65,88,82,80,80,14000,24000,38000,66,25000,Commercial hub/restaurants
+Nagpur,Civil Lines,21.1553,79.0888,80,78,70,88,85,84,84,16000,27000,44000,68,18000,Posh/courts area/wide roads
+Nagpur,Wathoda,21.1012,79.1412,70,72,60,78,72,74,68,8000,13000,21000,56,20000,Affordable east Nagpur
+Indore,Vijay Nagar,22.7446,75.8874,78,78,68,90,82,82,84,12000,20000,32000,64,22000,IT hub/premium/malls
+Indore,Palasia,22.7179,75.8714,78,80,65,88,82,80,82,14000,24000,38000,66,25000,City center/premium/Treasure Island
+Indore,Scheme 54,22.7538,75.9078,76,75,65,85,80,80,78,12000,20000,32000,63,20000,IT companies/growing/planned
+Indore,Rajendra Nagar,22.7059,75.8974,74,76,63,84,78,78,74,10000,17000,27000,60,22000,South Indore/peaceful/families
+Surat,Athwa,21.1779,72.8316,78,78,65,88,82,80,82,14000,24000,38000,66,22000,Upscale/city center/malls
+Surat,Vesu,21.1477,72.7895,78,75,68,85,80,80,80,13000,22000,35000,64,18000,Posh/growing/diamond biz
+Surat,Adajan,21.2023,72.7925,76,76,65,85,78,80,76,12000,20000,32000,62,22000,Residential/families/west Surat
+Surat,Althan,21.1523,72.7964,72,72,62,80,76,76,72,11000,18000,29000,60,20000,Affordable/south Surat/quiet`;
+
+const RENTALS_CSV = `id,city,neighborhood,property_name,property_type,bedrooms,bathrooms,area_sqft,rent_per_month,furnishing,floor,total_floors,parking,amenities,listing_url,source,contact,description,verified
+1,Mumbai,Bandra West,Seaside Residency 2BHK,Apartment,2,2,950,78000,Semi-Furnished,8,12,Yes,"Gym|Swimming Pool|Security|Power Backup",https://www.magicbricks.com/property-for-rent/residential-apartments/bandra-west-mumbai/prdet130960695,MagicBricks,+91-9820011234,Beautiful 2BHK with sea view near Bandstand promenade. Walking distance to Carter Road.,Yes
+2,Mumbai,Bandra West,Classic 1BHK near Hill Road,Apartment,1,1,550,46000,Furnished,4,7,No,"Security|Power Backup|Lift",https://www.nobroker.in/property/rent/apartment-1bhk-bandra-west-mumbai,NoBroker,+91-9820044567,Cozy 1BHK near Hill Road market and Linking Road. Easy access to Bandra station.,Yes
+3,Mumbai,Bandra West,Luxe 3BHK Sea View,Apartment,3,3,1600,130000,Fully Furnished,12,18,Yes,"Gym|Pool|Club House|Valet Parking|Security",https://www.99acres.com/residential-property-for-rent-in-bandra-west-prdet166,99acres,+91-9820078901,Stunning 3BHK with panoramic sea views. Modern amenities 5 min from Bandra-Kurla Complex.,Yes
+4,Mumbai,Andheri West,Modern 2BHK Millennium Tower,Apartment,2,2,900,49000,Semi-Furnished,6,14,Yes,"Gym|Security|Power Backup|Lift",https://www.magicbricks.com/property-for-rent/residential-apartments/andheri-west-mumbai/prdet229031,MagicBricks,+91-9821012345,2BHK in Millennium Tower 10 min from Andheri Metro. Near DN Nagar and SV Road.,Yes
+5,Mumbai,Andheri West,Budget 1BHK Lokhandwala,Apartment,1,1,480,28000,Unfurnished,2,5,No,"Security|Lift",https://www.nobroker.in/property/rent/1bhk-andheri-west-lokhandwala-mumbai,NoBroker,+91-9821045678,Affordable 1BHK near Lokhandwala Market. Well connected to Western Express Highway.,Yes
+6,Mumbai,Powai,IIT Road 2BHK Lake View,Apartment,2,2,1100,44000,Semi-Furnished,9,15,Yes,"Gym|Swimming Pool|Children Play Area|Security",https://www.magicbricks.com/property-for-rent/residential-apartments/powai-mumbai/prdet341022,MagicBricks,+91-9867012345,Spacious 2BHK with Powai Lake view. Near Hiranandani Gardens and Galleria Mall.,Yes
+7,Mumbai,Powai,Hiranandani 3BHK Premium,Apartment,3,3,1550,72000,Fully Furnished,11,21,Yes,"Gym|Pool|Tennis Court|Concierge|Security",https://www.99acres.com/property-for-rent-in-hiranandani-powai-mumbai,99acres,+91-9867034567,Premium 3BHK in Hiranandani complex. School and hospital within campus.,Yes
+8,Mumbai,Juhu,Juhu Beach 3BHK,Apartment,3,2,1400,125000,Semi-Furnished,5,8,Yes,"Gym|Security|Power Backup",https://www.magicbricks.com/property-for-rent/residential-apartments/juhu-mumbai/prdet441055,MagicBricks,+91-9821098765,Walk to Juhu Beach. Near Juhu Circle and JVPD Scheme. Premium residential area.,Yes
+9,Mumbai,Thane West,Affordable 2BHK Ghodbunder,Apartment,2,2,950,27000,Semi-Furnished,4,12,Yes,"Gym|Security|Power Backup|Club House",https://www.nobroker.in/property/rent/2bhk-thane-west-ghodbunder-road,NoBroker,+91-9867056789,Well-maintained 2BHK near Eastern Express Highway. Multiple schools and hospitals nearby.,Yes
+10,Mumbai,Navi Mumbai Vashi,Sector 9 2BHK,Apartment,2,2,1000,24000,Semi-Furnished,3,7,Yes,"Security|Lift|Power Backup",https://www.magicbricks.com/property-for-rent/residential-apartments/vashi-navi-mumbai/prdet551033,MagicBricks,+91-9820111111,Planned city living. Near Vashi Railway Station and Inorbit Mall. Clean area.,Yes
+11,Delhi,Hauz Khas,HK Village 2BHK,Apartment,2,2,1000,55000,Fully Furnished,3,5,No,"Security|Power Backup",https://www.magicbricks.com/property-for-rent/residential-apartments/hauz-khas-new-delhi/prdet661023,MagicBricks,+91-9810012345,Steps from Hauz Khas Village market and fort. Walking to IIT Delhi green belt.,Yes
+12,Delhi,Hauz Khas,Modern Studio near Deer Park,Studio,1,1,400,30000,Fully Furnished,1,4,No,"Security|Power Backup",https://www.nobroker.in/property/rent/studio-hauz-khas-delhi,NoBroker,+91-9810023456,Compact studio perfect for working professional. Near Green Park Metro station.,Yes
+13,Delhi,Dwarka,Sector 10 3BHK DDA Flat,Apartment,3,2,1200,38000,Semi-Furnished,5,14,Yes,"Gym|Security|Power Backup|Park",https://www.99acres.com/residential-property-for-rent-in-dwarka-sector-10-delhi,99acres,+91-9810034567,Spacious DDA flat in well-planned sector. Near Blue Line Metro and malls.,Yes
+14,Delhi,Dwarka,1BHK Sector 6 Affordable,Apartment,1,1,550,15000,Unfurnished,2,6,No,"Security|Lift",https://www.magicbricks.com/property-for-rent/residential-apartments/dwarka-sector-6-delhi/prdet771044,MagicBricks,+91-9810045678,Budget-friendly 1BHK near Dwarka Sector 6 Metro. Great for students and young professionals.,Yes
+15,Delhi,Saket,Select Citywalk Area 2BHK,Apartment,2,2,1100,50000,Fully Furnished,7,12,Yes,"Gym|Security|Power Backup|Concierge",https://www.nobroker.in/property/rent/2bhk-saket-south-delhi,NoBroker,+91-9811012345,Premium 2BHK walking distance to Select Citywalk Mall and Saket Metro.,Yes
+16,Delhi,Greater Kailash,GK1 M-Block 3BHK,Independent Floor,3,3,1800,95000,Semi-Furnished,2,3,Yes,"Garden|Security|Power Backup",https://www.magicbricks.com/property-for-rent/residential-apartments/greater-kailash-1-delhi/prdet881062,MagicBricks,+91-9811023456,Beautiful independent floor in GK-1 with private garden. Near M-Block market.,Yes
+17,Delhi,Vasant Kunj,DLF Area 2BHK,Apartment,2,2,1100,44000,Semi-Furnished,6,10,Yes,"Gym|Pool|Security|Club House",https://www.99acres.com/property-for-rent-in-vasant-kunj-delhi,99acres,+91-9811034567,Gated complex near DLF Promenade Mall. Green zone with parks nearby.,Yes
+18,Delhi,Rohini,Sector 8 2BHK Affordable,Apartment,2,2,900,24000,Semi-Furnished,3,7,Yes,"Security|Power Backup|Lift",https://www.magicbricks.com/property-for-rent/residential-apartments/rohini-sector-8-delhi/prdet991073,MagicBricks,+91-9811045678,Value-for-money 2BHK in planned sector. Near Rithala Metro and shopping complex.,Yes
+19,Bangalore,Koramangala,5th Block 2BHK,Apartment,2,2,1050,50000,Fully Furnished,4,8,No,"Gym|Security|Power Backup",https://www.magicbricks.com/property-for-rent/residential-apartments/koramangala-5th-block-bangalore/prdet101023,MagicBricks,+91-9880012345,Premium 2BHK in startup hub. Walking to Forum Mall and multiple restaurants.,Yes
+20,Bangalore,Koramangala,1BHK Startup Zone,Apartment,1,1,550,28000,Semi-Furnished,2,5,No,"Security|Power Backup",https://www.nobroker.in/property/rent/1bhk-koramangala-bangalore,NoBroker,+91-9880023456,Perfect for startup employees. Near Koramangala 8th Block food street.,Yes
+21,Bangalore,Koramangala,3BHK Premium 7th Block,Apartment,3,3,1700,85000,Fully Furnished,9,12,Yes,"Gym|Pool|Security|Club House|Power Backup",https://www.99acres.com/residential-property-for-rent-in-koramangala-7th-block-bangalore,99acres,+91-9880034567,Luxury 3BHK with all amenities. Near Wipro office and Koramangala social.,Yes
+22,Bangalore,Indiranagar,100 Feet Road 2BHK,Apartment,2,2,1000,52000,Fully Furnished,5,9,No,"Gym|Security|Power Backup",https://www.magicbricks.com/property-for-rent/residential-apartments/indiranagar-bangalore/prdet211044,MagicBricks,+91-9880045678,Vibrant location on 100 Feet Road. Walking to CMH Road restaurants and bars.,Yes
+23,Bangalore,Whitefield,ITPL Proximity 2BHK,Apartment,2,2,1150,36000,Semi-Furnished,6,14,Yes,"Gym|Pool|Security|Children Play Area",https://www.nobroker.in/property/rent/2bhk-whitefield-itpl-bangalore,NoBroker,+91-9880056789,5 min drive to ITPL Tech Park. Gated community with all amenities.,Yes
+24,Bangalore,HSR Layout,Sector 4 Independent House,Independent House,3,3,2000,65000,Semi-Furnished,1,1,Yes,"Garden|Security|Power Backup",https://www.magicbricks.com/property-for-rent/residential-apartments/hsr-layout-bangalore/prdet321055,MagicBricks,+91-9880067890,Spacious independent house in prime HSR. Quiet neighborhood with good connectivity.,Yes
+25,Bangalore,Electronic City,Phase 1 1BHK IT Housing,Apartment,1,1,520,14000,Semi-Furnished,3,7,Yes,"Security|Power Backup|Lift",https://www.nobroker.in/property/rent/1bhk-electronic-city-phase1-bangalore,NoBroker,+91-9880078901,Budget 1BHK for IT professionals. 5 min to Infosys and Wipro campuses.,Yes
+26,Bangalore,Bellandur,ORR 2BHK Gated,Apartment,2,2,1050,32000,Semi-Furnished,7,12,Yes,"Gym|Security|Power Backup|Club House",https://www.99acres.com/residential-property-for-rent-in-bellandur-bangalore,99acres,+91-9880089012,Well-connected on Outer Ring Road. Near Bellandur Lake and multiple IT offices.,Yes
+27,Bangalore,Marathahalli,Brigade Road 2BHK,Apartment,2,2,1000,29000,Semi-Furnished,4,8,Yes,"Gym|Security|Power Backup",https://www.magicbricks.com/property-for-rent/residential-apartments/marathahalli-bangalore/prdet431066,MagicBricks,+91-9880090123,Affordable 2BHK near Marathahalli Bridge. Easy access to ORR and airport road.,Yes
+28,Hyderabad,Gachibowli,DLF Cyber City Area 2BHK,Apartment,2,2,1100,37000,Semi-Furnished,8,16,Yes,"Gym|Pool|Security|Power Backup",https://www.magicbricks.com/property-for-rent/residential-apartments/gachibowli-hyderabad/prdet541077,MagicBricks,+91-9849012345,Close to DLF Cyber City and Microsoft campus. Lush green gated society.,Yes
+29,Hyderabad,Banjara Hills,Road 12 Premium 3BHK,Apartment,3,3,1700,60000,Fully Furnished,6,10,Yes,"Gym|Pool|Security|Club House|Concierge",https://www.nobroker.in/property/rent/3bhk-banjara-hills-road12-hyderabad,NoBroker,+91-9849023456,Luxury 3BHK in most coveted road of Banjara Hills. Fine dining and embassies nearby.,Yes
+30,Hyderabad,Jubilee Hills,Road 36 3BHK,Apartment,3,3,1800,68000,Fully Furnished,4,8,Yes,"Gym|Pool|Security|Generator|Concierge",https://www.99acres.com/residential-property-for-rent-in-jubilee-hills-hyderabad,99acres,+91-9849034567,Premium area preferred by film stars and industrialists. Very safe gated society.,Yes
+31,Hyderabad,Madhapur,HITEC City 2BHK,Apartment,2,2,1050,38000,Semi-Furnished,7,14,Yes,"Gym|Security|Power Backup|Club House",https://www.magicbricks.com/property-for-rent/residential-apartments/madhapur-hyderabad/prdet651088,MagicBricks,+91-9849045678,IT employees preferred. 5 min to HITEC City. Near Inorbit Mall Hyderabad.,Yes
+32,Hyderabad,Kondapur,Affordable 2BHK IT Corridor,Apartment,2,2,1000,29000,Semi-Furnished,5,10,Yes,"Gym|Security|Power Backup",https://www.nobroker.in/property/rent/2bhk-kondapur-hyderabad,NoBroker,+91-9849056789,Budget IT hub housing. Near Kondapur bus stop and multiple tech companies.,Yes
+33,Hyderabad,Kukatpally,JNTU Road 2BHK,Apartment,2,2,950,26000,Unfurnished,3,7,No,"Security|Lift|Power Backup",https://www.magicbricks.com/property-for-rent/residential-apartments/kukatpally-hyderabad/prdet761099,MagicBricks,+91-9849067890,Affordable for students and young families. Near JNTU and KPHB Metro.,Yes
+34,Hyderabad,Secunderabad,Cantonment 2BHK,Apartment,2,2,1100,30000,Semi-Furnished,4,8,No,"Security|Power Backup|Lift",https://www.99acres.com/residential-property-for-rent-in-secunderabad-hyderabad,99acres,+91-9849078901,Heritage cantonment area. Near Secunderabad Railway Station and Paradise biryani.,Yes
+35,Chennai,Anna Nagar,2nd Avenue 2BHK,Apartment,2,2,1050,40000,Semi-Furnished,4,8,Yes,"Gym|Security|Power Backup|Lift",https://www.magicbricks.com/property-for-rent/residential-apartments/anna-nagar-chennai/prdet871110,MagicBricks,+91-9884012345,Premium south Chennai living. Near Anna Nagar Tower Park and Spencer Plaza.,Yes
+36,Chennai,Adyar,IIT Road 3BHK,Apartment,3,3,1550,70000,Fully Furnished,6,10,Yes,"Gym|Pool|Security|Generator",https://www.nobroker.in/property/rent/3bhk-adyar-iit-road-chennai,NoBroker,+91-9884023456,Premium area next to IIT Madras. Tree-lined streets walking to Adyar river.,Yes
+37,Chennai,Velachery,Phoenix Mall 2BHK,Apartment,2,2,1000,31000,Semi-Furnished,5,12,Yes,"Gym|Security|Power Backup|Club House",https://www.99acres.com/residential-property-for-rent-in-velachery-chennai,99acres,+91-9884034567,Near Phoenix MarketCity Mall. Good metro connectivity on Green Line.,Yes
+38,Chennai,Nungambakkam,Consulate Area 2BHK,Apartment,2,2,1100,50000,Fully Furnished,3,7,No,"Security|Power Backup|Generator",https://www.magicbricks.com/property-for-rent/residential-apartments/nungambakkam-chennai/prdet981121,MagicBricks,+91-9884045678,Premium central Chennai. Near US Consulate shopping malls.,Yes
+39,Chennai,T Nagar,Pondy Bazaar 2BHK,Apartment,2,2,900,40000,Semi-Furnished,4,8,No,"Security|Power Backup|Lift",https://www.nobroker.in/property/rent/2bhk-t-nagar-pondy-bazaar-chennai,NoBroker,+91-9884056789,Commercial heartbeat of Chennai. Steps from Pondy Bazaar and Panagal Park.,Yes
+40,Chennai,OMR,IT Corridor 2BHK,Apartment,2,2,1100,27000,Semi-Furnished,6,14,Yes,"Gym|Pool|Security|Power Backup",https://www.99acres.com/residential-property-for-rent-in-omr-chennai,99acres,+91-9884067890,Gated complex on Old Mahabalipuram Road IT corridor. Near Tidel Park.,Yes
+41,Pune,Koregaon Park,Lane 6 Premium 2BHK,Apartment,2,2,1100,50000,Fully Furnished,3,7,No,"Security|Power Backup|Generator",https://www.magicbricks.com/property-for-rent/residential-apartments/koregaon-park-pune/prdet1091132,MagicBricks,+91-9822012345,Heart of Koregaon Park. Walking to German Bakery and Osho International Meditation Resort.,Yes
+42,Pune,Koregaon Park,3BHK Bungalow Style,Independent House,3,3,2200,85000,Semi-Furnished,1,2,Yes,"Garden|Security|Power Backup",https://www.nobroker.in/property/rent/3bhk-koregaon-park-pune-bungalow,NoBroker,+91-9822023456,Rare independent bungalow in KP. Large garden extremely quiet lane.,Yes
+43,Pune,Baner,IT Hub 2BHK Gated,Apartment,2,2,1050,40000,Semi-Furnished,7,14,Yes,"Gym|Pool|Security|Club House",https://www.99acres.com/residential-property-for-rent-in-baner-pune,99acres,+91-9822034567,Near Baner road IT companies. Balewadi Stadium and Aundh malls in vicinity.,Yes
+44,Pune,Kothrud,Paud Road 2BHK,Apartment,2,2,1050,36000,Semi-Furnished,4,8,No,"Security|Power Backup|Lift",https://www.magicbricks.com/property-for-rent/residential-apartments/kothrud-pune/prdet1201143,MagicBricks,+91-9822045678,Educational hub with multiple colleges nearby. Peaceful residential area.,Yes
+45,Pune,Viman Nagar,Airport Road 2BHK,Apartment,2,2,1100,40000,Fully Furnished,6,12,Yes,"Gym|Security|Power Backup|Club House",https://www.nobroker.in/property/rent/2bhk-viman-nagar-pune,NoBroker,+91-9822056789,Near Pune International Airport. Cosmopolitan crowd multiple restaurants.,Yes
+46,Pune,Hinjewadi,IT Park Phase 1 1BHK,Apartment,1,1,580,16000,Semi-Furnished,4,10,Yes,"Security|Power Backup|Lift",https://www.99acres.com/residential-property-for-rent-in-hinjewadi-phase1-pune,99acres,+91-9822067890,Walking distance to Infosys and Wipro campus. Affordable for freshers.,Yes
+47,Pune,Aundh,DP Road 2BHK Premium,Apartment,2,2,1100,40000,Fully Furnished,5,9,Yes,"Gym|Security|Power Backup|Club House",https://www.magicbricks.com/property-for-rent/residential-apartments/aundh-pune/prdet1311154,MagicBricks,+91-9822078901,Fitness-first neighborhood. Near D-Mart multiple parks and cycling tracks.,Yes
+48,Pune,Hadapsar,Magarpatta City 2BHK,Apartment,2,2,1100,26000,Semi-Furnished,4,12,Yes,"Gym|Pool|Security|Club House|Schools Inside",https://www.nobroker.in/property/rent/2bhk-magarpatta-city-hadapsar-pune,NoBroker,+91-9822089012,Self-sufficient township. Schools hospital IT offices all within Magarpatta.,Yes
+49,Kolkata,Salt Lake,Sector 3 2BHK IT Area,Apartment,2,2,1100,26000,Semi-Furnished,4,8,Yes,"Gym|Security|Power Backup|Lift",https://www.magicbricks.com/property-for-rent/residential-apartments/salt-lake-sector-3-kolkata/prdet1411165,MagicBricks,+91-9830012345,IT sector proximity. Near Sector V tech hub and City Centre Mall.,Yes
+50,Kolkata,New Town,Eco Park Area 3BHK,Apartment,3,3,1500,38000,Semi-Furnished,6,14,Yes,"Gym|Pool|Security|Power Backup",https://www.99acres.com/residential-property-for-rent-in-new-town-kolkata,99acres,+91-9830023456,Smart city project. Near Eco Park and Biswa Bangla Gate. Clean and planned.,Yes
+51,Kolkata,Ballygunge,Posh 3BHK,Apartment,3,3,1700,65000,Fully Furnished,5,9,No,"Security|Power Backup|Generator",https://www.magicbricks.com/property-for-rent/residential-apartments/ballygunge-kolkata/prdet1521176,MagicBricks,+91-9830034567,Most posh south Kolkata address. Near Ballygunge lake and cultural institutions.,Yes
+52,Kolkata,Park Street,Food Street 2BHK,Apartment,2,2,1000,45000,Fully Furnished,4,8,No,"Security|Power Backup|Lift",https://www.nobroker.in/property/rent/2bhk-park-street-kolkata,NoBroker,+91-9830045678,On iconic Park Street. Walking to Peter Cat Flurys and all night life.,Yes
+53,Kolkata,Alipore,Luxury 3BHK Zoo Area,Apartment,3,3,2000,80000,Fully Furnished,5,10,Yes,"Gym|Security|Power Backup|Concierge",https://www.99acres.com/residential-property-for-rent-in-alipore-kolkata,99acres,+91-9830056789,Most exclusive address in Kolkata. Near Alipore Zoo and South Club.,Yes
+54,Kolkata,Jadavpur,University Area 2BHK,Apartment,2,2,950,24000,Semi-Furnished,3,6,No,"Security|Power Backup|Lift",https://www.magicbricks.com/property-for-rent/residential-apartments/jadavpur-kolkata/prdet1631187,MagicBricks,+91-9830067890,Intellectual hub of Kolkata. Near Jadavpur University and 8B bus terminus.,Yes
+55,Ahmedabad,Prahlad Nagar,SG Highway 2BHK,Apartment,2,2,1100,32000,Semi-Furnished,7,14,Yes,"Gym|Pool|Security|Club House",https://www.magicbricks.com/property-for-rent/residential-apartments/prahlad-nagar-ahmedabad/prdet1741198,MagicBricks,+91-9824012345,Corporate hub with premium malls. Near Prahlad Nagar Garden and ISKCON temple.,Yes
+56,Ahmedabad,Satellite,Jodhpur Cross Road 2BHK,Apartment,2,2,1150,40000,Fully Furnished,6,12,Yes,"Gym|Security|Power Backup|Club House",https://www.nobroker.in/property/rent/2bhk-satellite-ahmedabad,NoBroker,+91-9824023456,Premium upscale area. Near Jodhpur Cross Road market and multiple malls.,Yes
+57,Ahmedabad,Bodakdev,IIM Road 3BHK,Apartment,3,3,1600,56000,Fully Furnished,8,15,Yes,"Gym|Pool|Security|Generator|Club House",https://www.99acres.com/residential-property-for-rent-in-bodakdev-ahmedabad,99acres,+91-9824034567,Walk to IIM Ahmedabad. Premium and secure residential complex.,Yes
+58,Ahmedabad,Vastrapur,Lake Area 2BHK,Apartment,2,2,1100,32000,Semi-Furnished,5,10,Yes,"Gym|Security|Power Backup|Lift",https://www.magicbricks.com/property-for-rent/residential-apartments/vastrapur-ahmedabad/prdet1851209,MagicBricks,+91-9824045678,Near Vastrapur Lake. Jogging track greenery and proximity to Applewoods Estate.,Yes
+59,Jaipur,Malviya Nagar,IT Hub 2BHK,Apartment,2,2,1050,24000,Semi-Furnished,4,8,Yes,"Gym|Security|Power Backup|Lift",https://www.magicbricks.com/property-for-rent/residential-apartments/malviya-nagar-jaipur/prdet1961220,MagicBricks,+91-9828012345,Pink City IT hub. Near Malviya Industrial Area and City Mall Jaipur.,Yes
+60,Jaipur,C-Scheme,Central 2BHK,Apartment,2,2,1100,32000,Fully Furnished,3,7,No,"Security|Power Backup|Generator",https://www.nobroker.in/property/rent/2bhk-c-scheme-jaipur,NoBroker,+91-9828023456,Heart of Jaipur posh zone. Near Hotel Rambagh Palace and Raj Mandir Cinema.,Yes
+61,Jaipur,Vaishali Nagar,Family 3BHK,Apartment,3,3,1450,38000,Semi-Furnished,5,10,Yes,"Gym|Security|Power Backup|Children Play Area",https://www.99acres.com/residential-property-for-rent-in-vaishali-nagar-jaipur,99acres,+91-9828034567,Best residential colony in west Jaipur. Peaceful good schools nearby.,Yes
+62,Jaipur,Mansarovar,Affordable 2BHK Metro,Apartment,2,2,950,20000,Unfurnished,3,7,No,"Security|Lift|Power Backup",https://www.magicbricks.com/property-for-rent/residential-apartments/mansarovar-jaipur/prdet2071231,MagicBricks,+91-9828045678,Largest residential colony in India. Near Mansarovar Metro Station.,Yes
+63,Lucknow,Gomti Nagar,Vibhuti Khand 2BHK,Apartment,2,2,1100,22000,Semi-Furnished,4,8,Yes,"Gym|Security|Power Backup|Club House",https://www.magicbricks.com/property-for-rent/residential-apartments/gomti-nagar-lucknow/prdet2181242,MagicBricks,+91-9838012345,City best IT and business hub. Near Phoenix United Mall and Lekhraj Market.,Yes
+64,Lucknow,Hazratganj,Heritage Area 2BHK,Apartment,2,2,950,28000,Fully Furnished,3,6,No,"Security|Power Backup|Generator",https://www.nobroker.in/property/rent/2bhk-hazratganj-lucknow,NoBroker,+91-9838023456,Colonial heart of Lucknow. Walking to Hazratganj market and Chief Minister residence area.,Yes
+65,Nagpur,Civil Lines,Premium 3BHK,Apartment,3,3,1600,44000,Fully Furnished,4,8,No,"Security|Power Backup|Generator|Garden",https://www.magicbricks.com/property-for-rent/residential-apartments/civil-lines-nagpur/prdet2291253,MagicBricks,+91-9823012345,Best address in Nagpur. Wide roads bungalows courts and government offices area.,Yes
+66,Nagpur,Dharampeth,Sadar Adjacent 2BHK,Apartment,2,2,1050,20000,Semi-Furnished,3,6,No,"Security|Power Backup|Lift",https://www.nobroker.in/property/rent/2bhk-dharampeth-nagpur,NoBroker,+91-9823023456,Elite colony near Sitabuldi and Central Nagpur. Close to Dharampeth College.,Yes
+67,Indore,Vijay Nagar,AB Road 2BHK,Apartment,2,2,1100,22000,Semi-Furnished,5,10,Yes,"Gym|Security|Power Backup|Club House",https://www.magicbricks.com/property-for-rent/residential-apartments/vijay-nagar-indore/prdet2401264,MagicBricks,+91-9826012345,India cleanest city prime zone. Near C21 Mall and Treasure Island Mall.,Yes
+68,Indore,Palasia,City Center 2BHK,Apartment,2,2,1000,26000,Fully Furnished,4,8,No,"Security|Power Backup|Generator",https://www.nobroker.in/property/rent/2bhk-palasia-indore,NoBroker,+91-9826023456,Central Indore posh area. Near Palasia Square and MG Road shopping.,Yes
+69,Surat,Athwa,City Center 2BHK,Apartment,2,2,1100,25000,Semi-Furnished,4,8,Yes,"Gym|Security|Power Backup|Lift",https://www.magicbricks.com/property-for-rent/residential-apartments/athwa-surat/prdet2511275,MagicBricks,+91-9824112345,Diamond city prime location. Near Athwa Gate and VR Surat Mall.,Yes
+70,Surat,Vesu,Posh 3BHK,Apartment,3,3,1500,35000,Fully Furnished,6,12,Yes,"Gym|Pool|Security|Club House",https://www.nobroker.in/property/rent/3bhk-vesu-surat,NoBroker,+91-9824134567,Premium residential area. Near Vesu VR Mall and riverfront promenade.,Yes
+71,Mumbai,Malad West,Inorbit Mall Area 2BHK,Apartment,2,2,900,35000,Semi-Furnished,5,10,Yes,"Gym|Security|Power Backup|Club House",https://www.magicbricks.com/property-for-rent/residential-apartments/malad-west-mumbai/prdet2621286,MagicBricks,+91-9821156789,Near Inorbit Mall and Malad Railway Station. Good western line connectivity.,Yes
+72,Mumbai,Goregaon East,Film City Road 2BHK,Apartment,2,2,950,39000,Semi-Furnished,6,12,Yes,"Gym|Security|Power Backup",https://www.99acres.com/residential-property-for-rent-in-goregaon-east-mumbai,99acres,+91-9821167890,Near Film City and Aarey Colony forest. Goregaon Metro station walking distance.,Yes
+73,Bangalore,Jayanagar,4th Block 2BHK,Apartment,2,2,1100,36000,Semi-Furnished,3,7,No,"Security|Power Backup|Lift",https://www.magicbricks.com/property-for-rent/residential-apartments/jayanagar-4th-block-bangalore/prdet2731297,MagicBricks,+91-9880101234,Classic old Bangalore. Tree lined streets near Jayanagar shopping complex.,Yes
+74,Bangalore,Banashankari,Temple Area 2BHK,Apartment,2,2,1050,30000,Unfurnished,3,7,No,"Security|Power Backup|Lift",https://www.nobroker.in/property/rent/2bhk-banashankari-bangalore,NoBroker,+91-9880112345,South Bangalore residential. Near Banashankari Temple and Bannerghatta Road.,Yes
+75,Bangalore,JP Nagar,Phase 7 2BHK,Apartment,2,2,1050,34000,Semi-Furnished,4,8,Yes,"Gym|Security|Power Backup|Lift",https://www.99acres.com/residential-property-for-rent-in-jp-nagar-bangalore,99acres,+91-9880123456,South Bangalore premium. Near JP Nagar Metro and Gopalan Mall.,Yes
+76,Bangalore,Hebbal,Lake View 2BHK,Apartment,2,2,1100,40000,Semi-Furnished,8,14,Yes,"Gym|Pool|Security|Club House",https://www.magicbricks.com/property-for-rent/residential-apartments/hebbal-bangalore/prdet2841308,MagicBricks,+91-9880134567,Stunning Hebbal Lake view. Near Manyata Tech Park and Bellary Road.,Yes
+77,Chennai,Mylapore,Cultural Hub 2BHK,Apartment,2,2,1050,42000,Semi-Furnished,4,7,No,"Security|Power Backup|Generator",https://www.nobroker.in/property/rent/2bhk-mylapore-chennai,NoBroker,+91-9884078901,Cultural capital of Chennai. Near Kapaleeshwarar Temple and Marina Beach.,Yes
+78,Chennai,Sholinganallur,IT Belt 2BHK,Apartment,2,2,1100,28000,Semi-Furnished,5,12,Yes,"Gym|Security|Power Backup|Club House",https://www.99acres.com/residential-property-for-rent-in-sholinganallur-chennai,99acres,+91-9884089012,OMR IT belt housing. Near Cognizant and TCS campuses. Affordable for IT freshers.,Yes
+79,Chennai,Porur,Suburban 2BHK,Apartment,2,2,1000,28000,Semi-Furnished,4,8,Yes,"Security|Power Backup|Lift",https://www.magicbricks.com/property-for-rent/residential-apartments/porur-chennai/prdet2951319,MagicBricks,+91-9884090123,Western Chennai IT suburb. Near L&T Infotech and Chennai Bypass Road.,Yes
+80,Hyderabad,Miyapur,Metro End 2BHK,Apartment,2,2,1000,24000,Unfurnished,3,8,No,"Security|Lift|Power Backup",https://www.nobroker.in/property/rent/2bhk-miyapur-metro-hyderabad,NoBroker,+91-9849089012,Near Miyapur Metro Station terminus. Affordable western Hyderabad. Growing area.,Yes
+81,Hyderabad,LB Nagar,South 2BHK Affordable,Apartment,2,2,950,20000,Unfurnished,2,6,No,"Security|Lift",https://www.99acres.com/residential-property-for-rent-in-lb-nagar-hyderabad,99acres,+91-9849090123,Most affordable metro-connected area in Hyderabad. Near LB Nagar Metro Station.,Yes
+82,Kolkata,Behala,South 2BHK Budget,Apartment,2,2,1000,20000,Unfurnished,2,5,No,"Security|Power Backup",https://www.magicbricks.com/property-for-rent/residential-apartments/behala-kolkata/prdet3061330,MagicBricks,+91-9830078901,South Kolkata affordable. Near Behala Chowrasta and Tollygunge Metro.,Yes
+83,Kolkata,Rajarhat,New Town Adjacent 2BHK,Apartment,2,2,1050,20000,Semi-Furnished,4,10,Yes,"Gym|Security|Power Backup",https://www.nobroker.in/property/rent/2bhk-rajarhat-kolkata,NoBroker,+91-9830089012,Emerging IT suburb. Near Unitech IT Park and Rajarhat New Town.,Yes
+84,Pune,Wakad,Hinjewadi Link 2BHK,Apartment,2,2,1000,32000,Semi-Furnished,5,12,Yes,"Gym|Security|Power Backup|Club House",https://www.99acres.com/residential-property-for-rent-in-wakad-pune,99acres,+91-9822090123,Rapidly developing suburb. Near Wakad Chowk and Hinjewadi Phase 3.,Yes
+85,Pune,Shivajinagar,FC Road 2BHK,Apartment,2,2,1050,40000,Fully Furnished,3,7,No,"Security|Power Backup|Generator",https://www.magicbricks.com/property-for-rent/residential-apartments/shivajinagar-pune/prdet3171341,MagicBricks,+91-9822101234,Walking to Ferguson College Road. Near Pune Railway Station and law college area.,Yes
+86,Jaipur,Raja Park,Central 2BHK,Apartment,2,2,1000,20000,Semi-Furnished,3,6,No,"Security|Power Backup|Lift",https://www.nobroker.in/property/rent/2bhk-raja-park-jaipur,NoBroker,+91-9828056789,Central Jaipur location. Near Raja Park market and convenient to all areas.,Yes
+87,Lucknow,Aliganj,Family 2BHK,Apartment,2,2,1050,20000,Semi-Furnished,3,7,No,"Security|Power Backup|Lift",https://www.99acres.com/residential-property-for-rent-in-aliganj-lucknow,99acres,+91-9838034567,Family-friendly north Lucknow. Near Aliganj market and multiple schools.,Yes
+88,Lucknow,Indira Nagar,East 2BHK IT,Apartment,2,2,1000,20000,Semi-Furnished,4,8,No,"Security|Power Backup|Lift",https://www.magicbricks.com/property-for-rent/residential-apartments/indira-nagar-lucknow/prdet3281352,MagicBricks,+91-9838045678,East Lucknow growing area. Near IT companies and Sahara Mall.,Yes
+89,Ahmedabad,Navrangpura,City Center 2BHK,Apartment,2,2,1050,32000,Fully Furnished,4,8,No,"Security|Power Backup|Generator",https://www.nobroker.in/property/rent/2bhk-navrangpura-ahmedabad,NoBroker,+91-9824056789,City center prime area. Near Gujarat University and Ellis Bridge.,Yes
+90,Ahmedabad,Bopal,Suburban 2BHK,Apartment,2,2,1050,24000,Semi-Furnished,4,10,Yes,"Gym|Security|Power Backup|Club House",https://www.99acres.com/residential-property-for-rent-in-bopal-ahmedabad,99acres,+91-9824067890,Green suburb on outskirts. Near Bopal Circle and multiple schools and parks.,Yes`;
+
+const CITIES_DATA = {
+  Mumbai:    { col_index:82, monthly_single:35000, monthly_family:75000, meal_cheap:150, meal_mid:600, transport_pass:310, quality_of_life:65, pollution:72, internet:699 },
+  Delhi:     { col_index:72, monthly_single:28000, monthly_family:60000, meal_cheap:120, meal_mid:500, transport_pass:310, quality_of_life:58, pollution:78, internet:599 },
+  Bangalore: { col_index:75, monthly_single:30000, monthly_family:62000, meal_cheap:130, meal_mid:500, transport_pass:310, quality_of_life:62, pollution:70, internet:649 },
+  Hyderabad: { col_index:68, monthly_single:24000, monthly_family:50000, meal_cheap:110, meal_mid:400, transport_pass:310, quality_of_life:65, pollution:65, internet:599 },
+  Chennai:   { col_index:70, monthly_single:26000, monthly_family:55000, meal_cheap:120, meal_mid:450, transport_pass:310, quality_of_life:68, pollution:68, internet:599 },
+  Pune:      { col_index:72, monthly_single:26000, monthly_family:55000, meal_cheap:120, meal_mid:400, transport_pass:310, quality_of_life:70, pollution:66, internet:599 },
+  Kolkata:   { col_index:62, monthly_single:20000, monthly_family:42000, meal_cheap:100, meal_mid:350, transport_pass:310, quality_of_life:58, pollution:74, internet:499 },
+  Ahmedabad: { col_index:60, monthly_single:18000, monthly_family:38000, meal_cheap:100, meal_mid:300, transport_pass:310, quality_of_life:70, pollution:62, internet:449 },
+  Jaipur:    { col_index:58, monthly_single:16000, monthly_family:34000, meal_cheap:90, mid:280, transport_pass:310, quality_of_life:68, pollution:60, internet:399 },
+  Lucknow:   { col_index:58, monthly_single:16000, monthly_family:33000, meal_cheap:90, meal_mid:280, transport_pass:310, quality_of_life:64, pollution:62, internet:399 },
+  Surat:     { col_index:62, monthly_single:18000, monthly_family:38000, meal_cheap:100, meal_mid:300, transport_pass:310, quality_of_life:72, pollution:58, internet:449 },
+  Nagpur:    { col_index:58, monthly_single:16000, monthly_family:33000, meal_cheap:90, meal_mid:280, transport_pass:310, quality_of_life:66, pollution:60, internet:399 },
+  Indore:    { col_index:58, monthly_single:15000, monthly_family:32000, meal_cheap:85, meal_mid:280, transport_pass:310, quality_of_life:74, pollution:58, internet:399 }
+};
+
+// basic csv parser — handles quoted fields with commas inside
+function parseCSV(csv) {
+  const lines = csv.trim().split('\n');
+  const headers = lines[0].split(',');
+  return lines.slice(1).map(line => {
+    const vals = [];
+    let inQ = false, cur = '';
+    for (const ch of line) {
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === ',' && !inQ) { vals.push(cur); cur = ''; }
+      else cur += ch;
+    }
+    vals.push(cur);
+    const obj = {};
+    headers.forEach((h, i) => obj[h.trim()] = (vals[i] || '').trim());
+    return obj;
+  });
+}
+
+// parse everything up front
+const ALL_NEIGHBORHOODS = parseCSV(NEIGHBORHOODS_CSV);
+const ALL_RENTALS = parseCSV(RENTALS_CSV);
+
+// Convert numeric fields
+ALL_NEIGHBORHOODS.forEach(n => {
+  ['latitude','longitude','safety_score','transport_score','greenery_score','market_score',
+   'healthcare_score','schools_score','lifestyle_score','avg_rent_1bhk','avg_rent_2bhk',
+   'avg_rent_3bhk','cost_of_living_index','population_density'].forEach(k => {
+    n[k] = parseFloat(n[k]) || 0;
+  });
+});
+ALL_RENTALS.forEach(r => {
+  ['bedrooms','bathrooms','area_sqft','rent_per_month','floor','total_floors'].forEach(k => {
+    r[k] = parseInt(r[k]) || 0;
+  });
+});
+
+// map setup
+let map, heatLayer, pinMarkers = [];
+
+function initMap() {
+  map = L.map('map', { center: [22, 79], zoom: 5, zoomControl: false });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '©OSM ©CartoDB', subdomains: 'abcd', maxZoom: 19
+  }).addTo(map);
+  L.control.zoom({ position: 'topright' }).addTo(map);
+}
+initMap();
+
+// app state
+let selectedCity = '';
+let cityNeighborhoods = [];
+let currentRentalArea = '';
+
+// small utils
+function sv(sid, vid) { document.getElementById(vid).textContent = document.getElementById(sid).value; }
+
+function updateBudget() {
+  const v = parseInt(document.getElementById('budget').value);
+  document.getElementById('budgetDisplay').textContent = '₹' + v.toLocaleString('en-IN') + ' / month';
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function setLoad(txt, sub, show) {
+  document.getElementById('loadTxt').textContent = txt;
+  document.getElementById('loadSub').textContent = sub;
+  document.getElementById('loadDiv').classList.toggle('show', show);
+}
+
+function switchTab(el, tab) {
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById(tab + '-panel').classList.add('on');
+}
+
+function getPrefs() {
+  return [...document.querySelectorAll('.pref-chip.on')].map(e => e.dataset.p);
+}
+
+document.querySelectorAll('.pref-chip').forEach(btn => {
+  btn.addEventListener('click', () => btn.classList.toggle('on'));
+});
+
+// scoring — weights preferences and returns 0-100
+function scoreNeighborhood(nb, prefs, weights, budget) {
+  const costScore = nb.cost_of_living_index
+    ? Math.max(10, 100 - nb.cost_of_living_index)
+    : Math.max(10, Math.round(100 - (nb.avg_rent_2bhk / budget) * 80));
+
+  const s = {
+    cost: costScore,
+    safety: nb.safety_score,
+    transport: nb.transport_score,
+    green: nb.greenery_score,
+    markets: nb.market_score,
+    healthcare: nb.healthcare_score,
+    schools: nb.schools_score,
+    lifestyle: nb.lifestyle_score
+  };
+
+  const w = {
+    cost: weights.cost * (prefs.includes('cost') ? 1.5 : 0.7),
+    safety: weights.safety * (prefs.includes('safety') ? 1.4 : 0.7),
+    transport: weights.transit * (prefs.includes('transport') ? 1.4 : 0.7),
+    green: weights.amen * (prefs.includes('green') ? 1.3 : 0.5),
+    markets: 5 * (prefs.includes('markets') ? 1.3 : 0.6),
+    healthcare: 4 * (prefs.includes('healthcare') ? 1.3 : 0.6),
+    schools: 4 * (prefs.includes('schools') ? 1.3 : 0.5),
+    lifestyle: 4 * (prefs.includes('lifestyle') ? 1.2 : 0.6)
+  };
+
+  let tot = 0, ws = 0;
+  Object.keys(s).forEach(k => { tot += s[k] * w[k]; ws += w[k]; });
+  return { overall: Math.round(tot / ws), ...s };
+}
+
+// main analyze handler
+function analyze() {
+  selectedCity = document.getElementById('citySelect').value;
+  if (!selectedCity) { showToast('⚠️ Please select a city first'); return; }
+
+  setLoad('Crunching the data...', `pulling ${selectedCity} neighborhoods`, true);
+  document.getElementById('analyzeBtn').disabled = true;
+
+  setTimeout(() => {
+    const prefs = getPrefs();
+    const budget = parseInt(document.getElementById('budget').value);
+    const weights = {
+      cost: parseInt(document.getElementById('wCost').value),
+      safety: parseInt(document.getElementById('wSafety').value),
+      transit: parseInt(document.getElementById('wTransit').value),
+      amen: parseInt(document.getElementById('wAmen').value)
+    };
+
+    // Filter from dataset
+    const raw = ALL_NEIGHBORHOODS.filter(n => n.city === selectedCity);
+
+    // Score and add budget filter tag
+    cityNeighborhoods = raw.map(nb => {
+      const scores = scoreNeighborhood(nb, prefs, weights, budget);
+      return { ...nb, scores, inBudget: nb.avg_rent_2bhk <= budget };
+    }).sort((a, b) => b.scores.overall - a.scores.overall);
+
+    setLoad('Building map...', 'plotting neighborhoods', true);
+
+    setTimeout(() => {
+      renderMap();
+      renderResults();
+      renderInsights();
+      setupRentals();
+
+      setLoad('', '', false);
+      document.getElementById('analyzeBtn').disabled = false;
+
+      const nb_count = cityNeighborhoods.length;
+      const rent_count = ALL_RENTALS.filter(r => r.city === selectedCity).length;
+      document.getElementById('nb-badge').textContent = nb_count;
+      document.getElementById('nb-badge').classList.add('show');
+      document.getElementById('rent-badge').textContent = rent_count;
+      document.getElementById('rent-badge').classList.add('show');
+
+      // Switch to results
+      document.querySelectorAll('.tab').forEach(b => b.classList.remove('on'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
+      document.querySelector('[data-tab="results"]').classList.add('on');
+      document.getElementById('results-panel').classList.add('on');
+
+      showToast(`✅ Found ${nb_count} neighborhoods · ${rent_count} listings in ${selectedCity}`);
+    }, 300);
+  }, 400);
+}
+
+// ------ map rendering ------
+function renderMap() {  document.getElementById('mapEmpty').style.display = 'none';
+  pinMarkers.forEach(m => map.removeLayer(m));
+  pinMarkers = [];
+  if (heatLayer) map.removeLayer(heatLayer);
+
+  if (!cityNeighborhoods.length) return;
+  const first = cityNeighborhoods[0];
+  map.setView([first.latitude, first.longitude], 13);
+
+  buildHeat('overall');
+
+  cityNeighborhoods.forEach((nb, i) => {
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="custom-pin" style="width:26px;height:26px;${i < 3 ? '' : 'background:rgba(0,229,160,0.55);'}">${i+1}</div>`,
+      iconSize: [26,26], iconAnchor: [13,13]
+    });
+    const m = L.marker([nb.latitude, nb.longitude], { icon })
+      .addTo(map)
+      .bindPopup(popupHTML(nb, i));
+    pinMarkers.push(m);
+  });
+}
+
+function buildHeat(mode) {
+  if (heatLayer) map.removeLayer(heatLayer);
+  const pts = cityNeighborhoods.map(nb => {
+    const val = mode === 'overall' ? nb.scores.overall :
+                mode === 'cost' ? nb.scores.cost :
+                mode === 'safety' ? nb.safety_score :
+                mode === 'green' ? nb.greenery_score :
+                mode === 'transport' ? nb.transport_score : nb.scores.overall;
+    return [nb.latitude, nb.longitude, val / 100];
+  });
+  heatLayer = L.heatLayer(pts, { radius: 55, blur: 35, maxZoom: 17, gradient: { 0.1:'#ef4444', 0.4:'#f59e0b', 0.7:'#00e5a0', 1:'#00e5a0' } }).addTo(map);
+}
+
+function setHeat(mode, el) {
+  buildHeat(mode);
+  document.querySelectorAll('.mc-btn').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+}
+
+function popupHTML(nb, i) {
+  return `<div style="font-family:'DM Sans',sans-serif;padding:4px;min-width:190px">
+    <div style="font-family:'Syne',sans-serif;font-size:0.95rem;font-weight:700;margin-bottom:8px">#${i+1} ${nb.neighborhood}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.76rem;">
+      <div><div style="color:#64748b;margin-bottom:2px">Match Score</div><b style="color:#00e5a0;font-size:1rem">${nb.scores.overall}/100</b></div>
+      <div><div style="color:#64748b;margin-bottom:2px">2BHK Rent</div><b>₹${nb.avg_rent_2bhk.toLocaleString('en-IN')}</b></div>
+      <div><div style="color:#64748b;margin-bottom:2px">Safety</div><b>${nb.safety_score}/100</b></div>
+      <div><div style="color:#64748b;margin-bottom:2px">Transport</div><b>${nb.transport_score}/100</b></div>
+    </div>
+    <div style="margin-top:8px;font-size:0.7rem;color:#64748b;font-style:italic">${nb.known_for.replace(/\//g,' · ')}</div>
+  </div>`;
+}
+
+// results panel
+function renderResults() {
+  document.getElementById('resultsEmpty').style.display = 'none';
+  document.getElementById('resultsContent').style.display = 'block';
+  document.getElementById('resTitle').textContent = `${selectedCity} — ${cityNeighborhoods.length} Neighborhoods Ranked`;
+  document.getElementById('resSub').textContent = 'ranked by your preferences · click any card to see listings';
+
+  const budget = parseInt(document.getElementById('budget').value);
+  const avgScore = Math.round(cityNeighborhoods.reduce((s,n) => s+n.scores.overall,0)/cityNeighborhoods.length);
+  const affordable = cityNeighborhoods.filter(n => n.avg_rent_2bhk <= budget).length;
+  const avgRent = Math.round(cityNeighborhoods.reduce((s,n) => s+n.avg_rent_2bhk,0)/cityNeighborhoods.length);
+
+  document.getElementById('statRow').innerHTML = `
+    <div class="stat"><div class="stat-v">${cityNeighborhoods.length}</div><div class="stat-l">Areas</div></div>
+    <div class="stat"><div class="stat-v">${avgScore}</div><div class="stat-l">Avg Score</div></div>
+    <div class="stat"><div class="stat-v">₹${Math.round(avgRent/1000)}K</div><div class="stat-l">Avg 2BHK</div></div>
+    <div class="stat"><div class="stat-v">${affordable}</div><div class="stat-l">In Budget</div></div>
+  `;
+  renderNBCards(cityNeighborhoods);
+}
+
+function renderNBCards(data) {
+  const budget = parseInt(document.getElementById('budget').value);
+  document.getElementById('nbGrid').innerHTML = data.map((nb, i) => {
+    const tags = [];
+    if (i === 0) tags.push('<span class="tag tag-g">🏆 Best Match</span>');
+    if (nb.avg_rent_2bhk <= budget) tags.push('<span class="tag tag-g">💰 In Budget</span>');
+    if (nb.safety_score >= 80) tags.push('<span class="tag tag-b">🛡 Safe</span>');
+    if (nb.transport_score >= 82) tags.push('<span class="tag tag-o">🚌 Great Transit</span>');
+    if (nb.greenery_score >= 72) tags.push('<span class="tag tag-g">🌳 Green</span>');
+
+    return `<div class="nb-card" onclick="openNBRentals('${nb.neighborhood}')">
+      <div class="nb-rank ${i<3?'top':''}">#${i+1}</div>
+      <div class="nb-name">${nb.neighborhood}</div>
+      <div class="nb-city">${nb.city} · Click to view rentals →</div>
+      <div class="score-bar">
+        <span class="score-lbl">Match</span>
+        <div class="score-track"><div class="score-fill" style="width:${nb.scores.overall}%"></div></div>
+        <span class="score-num">${nb.scores.overall}</span>
+      </div>
+      <div class="nb-metrics">
+        <div class="metric"><div class="metric-v">₹${Math.round(nb.avg_rent_2bhk/1000)}K</div><div class="metric-k">2BHK/mo</div></div>
+        <div class="metric"><div class="metric-v">${nb.safety_score}</div><div class="metric-k">safety</div></div>
+        <div class="metric"><div class="metric-v">${nb.transport_score}</div><div class="metric-k">transit</div></div>
+        <div class="metric"><div class="metric-v">${nb.greenery_score}</div><div class="metric-k">greenery</div></div>
+        <div class="metric"><div class="metric-v">${nb.healthcare_score}</div><div class="metric-k">health</div></div>
+        <div class="metric"><div class="metric-v">${nb.schools_score}</div><div class="metric-k">schools</div></div>
+      </div>
+      ${tags.length ? '<div class="nb-tags">' + tags.join('') + '</div>' : ''}
+      <div class="nb-known">${nb.known_for.replace(/\//g,' · ')}</div>
+    </div>`;
+  }).join('');
+}
+
+function sortNB(key) {
+  const sorted = [...cityNeighborhoods].sort((a, b) => {
+    if (key === 'overall') return b.scores.overall - a.scores.overall;
+    if (key === 'cost') return a.avg_rent_2bhk - b.avg_rent_2bhk;
+    if (key === 'safety') return b.safety_score - a.safety_score;
+    if (key === 'transport') return b.transport_score - a.transport_score;
+    if (key === 'green') return b.greenery_score - a.greenery_score;
+    return 0;
+  });
+  renderNBCards(sorted);
+}
+
+// insights / charts
+function renderInsights() {
+  document.getElementById('insEmpty').style.display = 'none';
+  document.getElementById('insContent').style.display = 'block';
+  document.getElementById('insTitle').textContent = `${selectedCity} — City Intelligence Report`;
+  document.getElementById('insSub').textContent = `${cityNeighborhoods.length} neighborhoods analyzed · data from verified listings`;
+
+  const top7 = cityNeighborhoods.slice(0, 7);
+  const colors = ['#00e5a0','#3b82f6','#f97316','#f59e0b','#a78bfa','#34d399','#fb923c'];
+
+  document.getElementById('scoreChart').innerHTML = top7.map((nb, i) =>
+    `<div class="bar-row">
+      <div class="bar-name" title="${nb.neighborhood}">${nb.neighborhood}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${nb.scores.overall}%;background:${colors[i]}">${nb.scores.overall}</div></div>
+    </div>`).join('');
+
+  document.getElementById('rentChart').innerHTML = top7.map((nb, i) => {
+    const budget = parseInt(document.getElementById('budget').value);
+    const pct = Math.min(100, (nb.avg_rent_2bhk / budget) * 100);
+    const col = pct > 100 ? '#ef4444' : pct > 75 ? '#f59e0b' : '#00e5a0';
+    return `<div class="bar-row">
+      <div class="bar-name" title="${nb.neighborhood}">${nb.neighborhood}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,pct)}%;background:${col}">₹${Math.round(nb.avg_rent_2bhk/1000)}K</div></div>
+    </div>`;
+  }).join('');
+
+  // CoL Grid
+  const cd = CITIES_DATA[selectedCity] || {};
+  document.getElementById('colGrid').innerHTML = [
+    { k: 'Cost of Living Index', v: cd.col_index, max: 100 },
+    { k: 'Quality of Life', v: cd.quality_of_life, max: 100 },
+    { k: 'Pollution Index', v: cd.pollution, max: 100, invert: true },
+    { k: 'Monthly (Single) ₹', v: cd.monthly_single, max: 40000, fmt: v => '₹'+v?.toLocaleString('en-IN') },
+    { k: 'Monthly (Family) ₹', v: cd.monthly_family, max: 80000, fmt: v => '₹'+v?.toLocaleString('en-IN') },
+    { k: 'Meal (Cheap) ₹', v: cd.meal_cheap, max: 200, fmt: v => '₹'+v },
+    { k: 'Internet/mo ₹', v: cd.internet, max: 800, fmt: v => '₹'+v },
+    { k: 'Transport Pass ₹', v: cd.transport_pass, max: 400, fmt: v => '₹'+v },
+  ].map(item => {
+    const pct = Math.min(100, ((item.v || 0) / item.max) * 100);
+    const col = item.invert ? (pct > 70 ? '#ef4444' : pct > 40 ? '#f59e0b' : '#00e5a0')
+                            : (pct > 70 ? '#00e5a0' : pct > 40 ? '#f59e0b' : '#ef4444');
+    const display = item.fmt ? item.fmt(item.v) : (item.v || 'N/A');
+    return `<div class="col-item">
+      <div class="col-key">${item.k}</div>
+      <div class="col-bar">
+        <div class="col-track"><div class="col-fill" style="width:${pct}%;background:${col}"></div></div>
+        <div class="col-val">${display}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Radar
+  drawRadar(cityNeighborhoods[0]);
+}
+
+function drawRadar(nb) {
+  const canvas = document.getElementById('radarCanvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = 580; canvas.height = 230;
+  ctx.clearRect(0, 0, 580, 230);
+
+  const cx = 290, cy = 108, r = 88;
+  const labels = ['Safety','Transport','Greenery','Markets','Healthcare','Schools','Lifestyle'];
+  const vals = [nb.safety_score, nb.transport_score, nb.greenery_score, nb.market_score, nb.healthcare_score, nb.schools_score, nb.lifestyle_score];
+  const n = labels.length;
+
+  // Rings
+  for (let ring = 1; ring <= 4; ring++) {
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = (i/n)*Math.PI*2 - Math.PI/2;
+      const x = cx + Math.cos(a)*(r*ring/4), y = cy + Math.sin(a)*(r*ring/4);
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth=1; ctx.stroke();
+  }
+
+  // Axes
+  for (let i = 0; i < n; i++) {
+    const a = (i/n)*Math.PI*2 - Math.PI/2;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*r, cy+Math.sin(a)*r);
+    ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.stroke();
+  }
+
+  // Polygon
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const a = (i/n)*Math.PI*2 - Math.PI/2, v=vals[i]/100;
+    const x=cx+Math.cos(a)*r*v, y=cy+Math.sin(a)*r*v;
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+  ctx.fillStyle='rgba(0,229,160,0.12)'; ctx.fill();
+  ctx.strokeStyle='#00e5a0'; ctx.lineWidth=2; ctx.stroke();
+
+  // Dots + values
+  for (let i = 0; i < n; i++) {
+    const a=(i/n)*Math.PI*2-Math.PI/2, v=vals[i]/100;
+    const x=cx+Math.cos(a)*r*v, y=cy+Math.sin(a)*r*v;
+    ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fillStyle='#00e5a0'; ctx.fill();
+  }
+
+  // Labels
+  ctx.font='11px DM Sans,sans-serif'; ctx.fillStyle='#94a3b8'; ctx.textAlign='center';
+  for (let i = 0; i < n; i++) {
+    const a=(i/n)*Math.PI*2-Math.PI/2;
+    const lx=cx+Math.cos(a)*(r+24), ly=cy+Math.sin(a)*(r+20);
+    ctx.fillText(labels[i]+' '+vals[i], lx, ly+4);
+  }
+
+  ctx.font='bold 12px Syne,sans-serif'; ctx.fillStyle='#e2e8f0'; ctx.textAlign='center';
+  ctx.fillText('#1 Best Match — '+nb.neighborhood, cx, 222);
+}
+
+// rentals tab
+function setupRentals() {
+  document.getElementById('rentEmpty').style.display = 'none';
+  document.getElementById('rentContent').style.display = 'block';
+  document.getElementById('rentTitle').textContent = `Verified Rentals — ${selectedCity}`;
+
+  const areas = [...new Set(ALL_RENTALS.filter(r => r.city === selectedCity).map(r => r.neighborhood))];
+  currentRentalArea = areas[0] || '';
+
+  const selRow = document.getElementById('areaSelRow');
+  selRow.innerHTML = areas.map(a =>
+    `<button class="area-btn ${a===currentRentalArea?'on':''}" onclick="filterRentals('${a}',this)">${a}</button>`
+  ).join('');
+
+  document.getElementById('rentSub').textContent = `${areas.length} neighborhoods · listings from MagicBricks, NoBroker & 99acres`;
+  renderRentalCards(currentRentalArea);
+}
+
+function filterRentals(area, el) {
+  currentRentalArea = area;
+  document.querySelectorAll('.area-btn').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+  renderRentalCards(area);
+}
+
+function openNBRentals(area) {
+  // Switch to rentals tab and filter
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
+  document.querySelector('[data-tab="rentals"]').classList.add('on');
+  document.getElementById('rentals-panel').classList.add('on');
+
+  // Make sure rentals are set up
+  if (!document.getElementById('rentContent').style.display || document.getElementById('rentContent').style.display === 'none') {
+    setupRentals();
+  }
+
+  // Find and click the area button
+  setTimeout(() => {
+    const btns = document.querySelectorAll('.area-btn');
+    btns.forEach(b => {
+      if (b.textContent === area) {
+        b.click();
+        b.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+  }, 100);
+}
+
+function renderRentalCards(area) {
+  const listings = ALL_RENTALS.filter(r => r.city === selectedCity && r.neighborhood === area);
+  const budget = parseInt(document.getElementById('budget').value);
+
+  if (!listings.length) {
+    document.getElementById('propsGrid').innerHTML = `<div style="color:var(--text-dim);font-size:0.85rem;padding:1rem">No verified listings found for ${area}. Check MagicBricks or NoBroker directly.</div>`;
+    return;
+  }
+
+  document.getElementById('propsGrid').innerHTML = listings.map(l => {
+    const furClass = l.furnishing === 'Fully Furnished' ? 'fur-full' : l.furnishing === 'Semi-Furnished' ? 'fur-semi' : 'fur-un';
+    const typeClass = l.property_type.toLowerCase().includes('house') ? 'badge-house' : l.property_type.toLowerCase().includes('flat') ? 'badge-flat' : 'badge-apartment';
+    const overBudget = l.rent_per_month > budget;
+    const amenList = l.amenities.split('|').slice(0, 4);
+
+    return `<div class="prop-card" style="${overBudget ? 'opacity:0.6' : ''}">
+      <div class="prop-type-badge ${typeClass}">${l.property_type}</div>
+      ${overBudget ? '<span style="font-size:0.68rem;color:#ef4444;margin-left:6px;position:absolute;top:12px;right:12px">Over budget</span>' : ''}
+      <div class="prop-name">${l.property_name}</div>
+      <div class="prop-area">📍 ${l.neighborhood}, ${l.city}</div>
+      <div class="prop-price">₹${parseInt(l.rent_per_month).toLocaleString('en-IN')}<span>/month</span></div>
+      <div class="prop-stats">
+        <span class="prop-stat">🛏 ${l.bedrooms} Bed</span>
+        <span class="prop-stat">🚿 ${l.bathrooms} Bath</span>
+        <span class="prop-stat">📐 ${l.area_sqft} sqft</span>
+        <span class="prop-stat">🏢 Floor ${l.floor}/${l.total_floors}</span>
+        ${l.parking === 'Yes' ? '<span class="prop-stat">🚗 Parking</span>' : ''}
+      </div>
+      <div class="prop-furnish ${furClass}">${l.furnishing}</div>
+      <div style="margin-top:7px;font-size:0.7rem;color:var(--text-dim)">${amenList.join(' · ')}</div>
+      <div class="prop-desc">${l.description}</div>
+      <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span style="font-size:0.72rem;color:var(--text-dim)">📋 ${l.source}</span>
+        <span style="font-size:0.72rem;color:var(--text-dim)">📞 ${l.contact}</span>
+      </div>
+      <a href="${l.listing_url}" target="_blank" class="view-btn">🔗 View on ${l.source} →</a>
+    </div>`;
+  }).join('');
+}
+
+// ai chat
+async function sendAI() {
+  const inp = document.getElementById('aiInp');
+  const msg = inp.value.trim();
+  if (!msg) return;
+
+  const btn = document.getElementById('aiBtn');
+  btn.disabled = true;
+  inp.value = '';
+
+  appendMsg('user', msg);
+  const loadEl = appendMsg('bot', 'looking into this...');
+
+  const ctx = buildCtx();
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: `You are the UrbanIQ assistant — a practical, knowledgeable guide for people relocating within India. Think of yourself as a well-travelled friend who genuinely knows these cities, neighborhoods, commutes, and rental realities.
+
+Session data:
+${ctx}
+
+Be direct and conversational. Reference real neighborhood names, landmarks, metro lines, IT parks, and actual price points from the data. Skip the formal tone. If the user hasn't run an analysis yet, tell them to pick a city and hit Analyze first.`,
+        messages: [{ role: 'user', content: msg }]
+      })
+    });
+
+    const data = await res.json();
+    const reply = data.content?.[0]?.text || 'Unable to get response. Please try again.';
+    loadEl.querySelector('.ai-bubble').textContent = reply;
+  } catch(e) {
+    loadEl.querySelector('.ai-bubble').textContent = '⚠️ Connection error. Please try again.';
+  }
+
+  btn.disabled = false;
+  document.getElementById('aiChat').scrollTop = 99999;
+}
+
+function buildCtx() {
+  if (!cityNeighborhoods.length) return 'No analysis run yet. User has not selected a city.';
+  const top5 = cityNeighborhoods.slice(0, 5);
+  const budget = parseInt(document.getElementById('budget').value);
+  return `City: ${selectedCity}
+Budget: ₹${budget.toLocaleString('en-IN')}/month
+Preferences: ${getPrefs().join(', ')}
+
+Top 5 Neighborhoods (from 108-row verified dataset):
+${top5.map((nb,i) => `${i+1}. ${nb.neighborhood}: Score=${nb.scores.overall}/100, 2BHK=₹${nb.avg_rent_2bhk.toLocaleString('en-IN')}/mo, Safety=${nb.safety_score}, Transit=${nb.transport_score}, Green=${nb.greenery_score}, Known for: ${nb.known_for}`).join('\n')}
+
+City Data: CoL Index=${CITIES_DATA[selectedCity]?.col_index}, Monthly expenses (single)=₹${CITIES_DATA[selectedCity]?.monthly_single?.toLocaleString('en-IN')}
+Total listings available: ${ALL_RENTALS.filter(r => r.city === selectedCity).length}`;
+}
+
+function appendMsg(role, text) {
+  const chat = document.getElementById('aiChat');
+  const div = document.createElement('div');
+  div.className = `ai-msg ${role === 'user' ? 'user' : 'bot'}`;
+  div.innerHTML = `<div class="ai-who">${role === 'user' ? 'You' : 'UrbanIQ'}</div><div class="ai-bubble">${text}</div>`;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+</script>
+</body>
+</html>
